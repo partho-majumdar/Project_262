@@ -40,7 +40,10 @@ public class SellerProductController {
             @Valid @RequestBody CreateProductRequest request
     ) {
         ProductDto created = productService.createProduct(userDetails.getUsername(), request);
-        return new ResponseEntity<>(ApiResponse.success("Product created successfully", created, HttpStatus.CREATED.value()), HttpStatus.CREATED);
+        return new ResponseEntity<>(
+                ApiResponse.success("Product created successfully", created, HttpStatus.CREATED.value()),
+                HttpStatus.CREATED
+        );
     }
 
     @PutMapping("/{id}")
@@ -62,7 +65,6 @@ public class SellerProductController {
         return ResponseEntity.ok(ApiResponse.success("Product deleted successfully", null));
     }
 
-    // ===================== NEW ENDPOINT =====================
     @PostMapping(value = "/bulk-import", consumes = "multipart/form-data")
     public ResponseEntity<ApiResponse<BulkImportResultDto>> bulkImportProducts(
             @AuthenticationPrincipal UserDetails userDetails,

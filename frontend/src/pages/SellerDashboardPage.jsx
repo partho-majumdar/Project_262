@@ -407,7 +407,7 @@ export default function SellerDashboardPage() {
   };
 
   // ===================== BULK CSV (FIXED) =====================
-  const handleBulkCsvUpload = async (e) => {
+    const handleBulkCsvUpload = async (e) => {
     e.preventDefault();
     setBulkStatus('Uploading...');
 
@@ -427,14 +427,18 @@ export default function SellerDashboardPage() {
     formData.append('file', file);
 
     try {
+      // IMPORTANT: do NOT send application/json
       const res = await axiosClient.post('/seller/products/bulk-import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: {
+          'Content-Type': undefined, // removes the default application/json
+        },
       });
 
-      const data = res?.data ?? res;
-      const success = data?.successCount ?? 0;
-      const failed = data?.failedCount ?? 0;
-      const errors = data?.errors ?? [];
+      // axios interceptor already returns response.data (ApiResponse)
+      const payload = res?.data ?? res;
+      const success = payload?.successCount ?? 0;
+      const failed = payload?.failedCount ?? 0;
+      const errors = payload?.errors ?? [];
 
       let msg = `✅ Successfully imported ${success} product(s).`;
       if (failed > 0) {

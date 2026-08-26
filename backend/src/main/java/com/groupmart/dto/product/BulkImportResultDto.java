@@ -16,8 +16,10 @@ public class BulkImportResultDto {
     private int totalRows;
     private int successCount;
     private int failedCount;
+
     @Builder.Default
     private List<String> errors = new ArrayList<>();
+
     @Builder.Default
     private List<ProductDto> createdProducts = new ArrayList<>();
 }
