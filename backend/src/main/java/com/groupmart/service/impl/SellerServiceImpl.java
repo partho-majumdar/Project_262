@@ -8,14 +8,22 @@ import org.springframework.transaction.annotation.Transactional;
 import com.groupmart.common.exception.ApiException;
 import com.groupmart.common.exception.ResourceNotFoundException;
 import com.groupmart.dto.seller.*;
+import com.groupmart.entity.OrderItem;
+import com.groupmart.entity.Product;
 import com.groupmart.entity.Role;
 import com.groupmart.entity.SellerStore;
 import com.groupmart.entity.User;
+import com.groupmart.repository.OrderItemRepository;
+import com.groupmart.repository.ProductRepository;
 import com.groupmart.repository.SellerStoreRepository;
 import com.groupmart.repository.UserRepository;
 import com.groupmart.service.SellerService;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -24,6 +32,10 @@ public class SellerServiceImpl implements SellerService {
 
     private final SellerStoreRepository sellerStoreRepository;
     private final UserRepository userRepository;
+    private final ProductRepository productRepository;
+    private final OrderItemRepository orderItemRepository;
+
+    private static final int LOW_STOCK_THRESHOLD = 5;
 
     @Override
     @Transactional
@@ -41,7 +53,6 @@ public class SellerServiceImpl implements SellerService {
 
         String slug = generateStoreSlug(request.getStoreName());
 
-        // Promote user role to ROLE_SELLER if customer
         if (user.getRole() == Role.ROLE_CUSTOMER) {
             user.setRole(Role.ROLE_SELLER);
             userRepository.save(user);
@@ -94,7 +105,9 @@ public class SellerServiceImpl implements SellerService {
                 .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
 
         if (sellerStoreRepository.existsByStoreNameAndIdNot(request.getStoreName(), store.getId())) {
-            throw new ApiException("Store name '" + request.getStoreName() + "' is already taken by another merchant", HttpStatus.CONFLICT);
+            throw new ApiException(
+                    "Store name '" + request.getStoreName() + "' is already taken by another merchant",
+                    HttpStatus.CONFLICT);
         }
 
         store.setStoreName(request.getStoreName().trim());
@@ -108,6 +121,10 @@ public class SellerServiceImpl implements SellerService {
         return mapToDto(updated);
     }
 
+    /**
+     * LIVE dashboard overview — no hardcoded demo values.
+     * Counts products, order items, revenue, and low stock for this seller store.
+     */
     @Override
     @Transactional(readOnly = true)
     public SellerDashboardOverviewDto getSellerDashboardOverview(String userEmail) {
@@ -117,13 +134,56 @@ public class SellerServiceImpl implements SellerService {
         SellerStore store = sellerStoreRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
 
+        UUID storeId = store.getId();
+
+        // Products belonging to this store
+        List<Product> products = productRepository.findBySellerStoreId(storeId);
+        int totalProducts = products.size();
+
+        int lowStockAlertCount = (int) products.stream()
+                .filter(p -> p.getStockQuantity() <= LOW_STOCK_THRESHOLD)
+                .count();
+
+        double averageRating;
+        if (products.isEmpty()) {
+            averageRating = store.getRating();
+        } else {
+            averageRating = products.stream()
+                    .mapToDouble(Product::getRating)
+                    .average()
+                    .orElse(store.getRating());
+            averageRating = BigDecimal.valueOf(averageRating)
+                    .setScale(1, RoundingMode.HALF_UP)
+                    .doubleValue();
+        }
+
+        // Order items for this store → distinct orders + revenue from line subtotals
+        List<OrderItem> items = orderItemRepository.findBySellerStoreIdOrderByCreatedAtDesc(storeId);
+
+        Set<UUID> orderIds = new HashSet<>();
+        BigDecimal totalRevenue = BigDecimal.ZERO;
+
+        for (OrderItem item : items) {
+            if (item.getOrder() != null && item.getOrder().getId() != null) {
+                orderIds.add(item.getOrder().getId());
+            }
+            if (item.getSubtotal() != null) {
+                totalRevenue = totalRevenue.add(item.getSubtotal());
+            }
+        }
+
+        int totalOrders = orderIds.size();
+
+        // Keep store.totalSales roughly in sync (optional side effect is fine for overview)
+        // Not saving here to keep method read-only.
+
         return SellerDashboardOverviewDto.builder()
                 .store(mapToDto(store))
-                .totalRevenue(new BigDecimal("12450.00")) // Aggregate revenue metric
-                .totalOrders(48)
-                .totalProducts(12)
-                .lowStockAlertCount(2)
-                .averageRating(store.getRating())
+                .totalRevenue(totalRevenue.setScale(2, RoundingMode.HALF_UP))
+                .totalOrders(totalOrders)
+                .totalProducts(totalProducts)
+                .lowStockAlertCount(lowStockAlertCount)
+                .averageRating(averageRating)
                 .build();
     }
 

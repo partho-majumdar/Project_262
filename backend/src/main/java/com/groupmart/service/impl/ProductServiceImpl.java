@@ -103,13 +103,20 @@ public class ProductServiceImpl implements ProductService {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
 
-        SellerStore store = null;
-        if (user.getRole() == Role.ROLE_SELLER || user.getRole() == Role.ROLE_ADMIN) {
-            store = sellerStoreRepository.findByUserId(user.getId()).orElse(null);
-        }
+        // SellerStore store = null;
+        // if (user.getRole() == Role.ROLE_SELLER || user.getRole() == Role.ROLE_ADMIN) {
+        //     store = sellerStoreRepository.findByUserId(user.getId()).orElse(null);
+        // }
+
+        // Category category = categoryRepository.findById(request.getCategoryId())
+        //         .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
+        SellerStore store = sellerStoreRepository.findByUserId(user.getId())
+            .orElseThrow(() -> new ApiException(
+                "Create a seller store before adding products",
+                HttpStatus.BAD_REQUEST));
 
         Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
+            .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
         String slug = generateSlug(request.getName());
         String sku = generateSku(request.getName());

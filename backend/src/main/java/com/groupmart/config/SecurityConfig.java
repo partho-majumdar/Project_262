@@ -45,23 +45,40 @@ public class SecurityConfig {
             .cors(cors -> {})
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // .authorizeHttpRequests(auth -> auth
+            //     // Public Auth & Health Endpoints
+            //     .requestMatchers("/api/v1/auth/**").permitAll()
+            //     .requestMatchers("/api/v1/health/**", "/api/v1/system-status").permitAll()
+            //     .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/actuator/**").permitAll()
+                
+            //     // Public Catalog & AI Endpoints
+            //     .requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/categories/**", "/api/v1/reviews/**").permitAll()
+            //     .requestMatchers("/api/v1/ai-assistant/**", "/api/v1/ai-search/**").permitAll()
+            //     .requestMatchers("/api/v1/cart/**").permitAll()
+                
+            //     // Role-Based Endpoints
+            //     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+            //     .requestMatchers("/api/v1/seller/**").hasAnyRole("SELLER", "ADMIN")
+                
+            //     .anyRequest().authenticated()
+            // );
             .authorizeHttpRequests(auth -> auth
-                // Public Auth & Health Endpoints
-                .requestMatchers("/api/v1/auth/**").permitAll()
-                .requestMatchers("/api/v1/health/**", "/api/v1/system-status").permitAll()
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/actuator/**").permitAll()
-                
-                // Public Catalog & AI Endpoints
-                .requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/categories/**", "/api/v1/reviews/**").permitAll()
-                .requestMatchers("/api/v1/ai-assistant/**", "/api/v1/ai-search/**").permitAll()
-                .requestMatchers("/api/v1/cart/**").permitAll()
-                
-                // Role-Based Endpoints
-                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/v1/seller/**").hasAnyRole("SELLER", "ADMIN")
-                
-                .anyRequest().authenticated()
-            );
+            .requestMatchers("/api/v1/auth/**").permitAll()
+            .requestMatchers("/api/v1/health/**", "/api/v1/system-status").permitAll()
+            .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/actuator/**").permitAll()
+
+            .requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/categories/**", "/api/v1/reviews/**").permitAll()
+            .requestMatchers("/api/v1/ai-assistant/**", "/api/v1/ai-search/**").permitAll()
+            .requestMatchers("/api/v1/cart/**").permitAll()
+
+            // Allow any authenticated user to register a seller store
+            .requestMatchers(HttpMethod.POST, "/api/v1/seller/store").authenticated()
+
+            .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+            .requestMatchers("/api/v1/seller/**").hasAnyRole("SELLER", "ADMIN")
+
+            .anyRequest().authenticated()
+        );
 
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
