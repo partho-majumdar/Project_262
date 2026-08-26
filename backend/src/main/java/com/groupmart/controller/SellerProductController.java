@@ -8,8 +8,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.groupmart.common.response.ApiResponse;
+import com.groupmart.dto.product.BulkImportResultDto;
 import com.groupmart.dto.product.CreateProductRequest;
 import com.groupmart.dto.product.ProductDto;
 import com.groupmart.dto.product.UpdateProductRequest;
@@ -58,5 +60,18 @@ public class SellerProductController {
     ) {
         productService.deleteProduct(userDetails.getUsername(), id);
         return ResponseEntity.ok(ApiResponse.success("Product deleted successfully", null));
+    }
+
+    // ===================== NEW ENDPOINT =====================
+    @PostMapping(value = "/bulk-import", consumes = "multipart/form-data")
+    public ResponseEntity<ApiResponse<BulkImportResultDto>> bulkImportProducts(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam("file") MultipartFile file
+    ) {
+        BulkImportResultDto result = productService.bulkImportProducts(userDetails.getUsername(), file);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Bulk import finished: " + result.getSuccessCount() + " created, " + result.getFailedCount() + " failed",
+                result
+        ));
     }
 }

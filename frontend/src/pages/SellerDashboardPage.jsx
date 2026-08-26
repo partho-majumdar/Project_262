@@ -56,7 +56,6 @@ export default function SellerDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
-  /** true when backend returns SellerStore not found for this user */
   const [needsStore, setNeedsStore] = useState(false);
   const [creatingStore, setCreatingStore] = useState(false);
   const [createStoreForm, setCreateStoreForm] = useState({
@@ -73,7 +72,7 @@ export default function SellerDashboardPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [currentProduct, setCurrentProduct] = useState(emptyProductForm);
 
-  // Bulk CSV (no backend endpoint yet — UI kept, clearly non-persistent)
+  // Bulk CSV
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [csvContent, setCsvContent] = useState('');
   const [bulkStatus, setBulkStatus] = useState('');
@@ -96,7 +95,7 @@ export default function SellerDashboardPage() {
   const [aiPriceRecommendation, setAiPriceRecommendation] = useState(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
-  // Coupons — start empty (no seller coupon API)
+  // Coupons
   const [coupons, setCoupons] = useState([]);
   const [newCoupon, setNewCoupon] = useState({
     code: '',
@@ -118,7 +117,7 @@ export default function SellerDashboardPage() {
     returnPolicy: '',
   });
 
-  // Finance — no wallet API; derive display from analytics only
+  // Finance
   const [payoutAmount, setPayoutAmount] = useState('');
   const [payouts, setPayouts] = useState([]);
 
@@ -126,7 +125,7 @@ export default function SellerDashboardPage() {
   const [productSearch, setProductSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
 
-  // Reviews — start empty (no seller reviews API yet)
+  // Reviews
   const [reviews, setReviews] = useState([]);
   const [reviewReplyText, setReviewReplyText] = useState({});
 
@@ -144,7 +143,6 @@ export default function SellerDashboardPage() {
     setError('');
     setNeedsStore(false);
 
-    // 1) Store first — if missing, stop and show create-store UI
     let storeObj = null;
     try {
       const storeRes = await axiosClient.get('/seller/store/me');
@@ -173,7 +171,6 @@ export default function SellerDashboardPage() {
       }));
     }
 
-    // 2) Rest of dashboard (tolerate individual failures)
     try {
       const results = await Promise.allSettled([
         axiosClient.get('/seller/dashboard'),
@@ -184,8 +181,7 @@ export default function SellerDashboardPage() {
         axiosClient.get('/seller/orders'),
       ]);
 
-      const val = (i) =>
-        results[i].status === 'fulfilled' ? results[i].value : null;
+      const val = (i) => (results[i].status === 'fulfilled' ? results[i].value : null);
 
       const dashRes = val(0);
       const anaRes = val(1);
@@ -213,10 +209,6 @@ export default function SellerDashboardPage() {
       setInventoryList(invList);
       setOrders(orderList);
 
-      // LIVE aggregates from real lists.
-      // Backend /seller/dashboard currently hardcodes demo values
-      // (totalRevenue=12450, totalOrders=48, totalProducts=12, lowStock=2).
-      // Prefer computed values so a new empty store shows 0s, not fake data.
       const liveProductCount = productList.length;
       const liveOrderCount = orderList.length;
       const liveRevenue = orderList.reduce((sum, o) => {
@@ -243,11 +235,7 @@ export default function SellerDashboardPage() {
         ...analyticsObj,
         totalSalesRevenue: backendLooksDemo
           ? liveRevenue
-          : Number(
-              overview?.totalRevenue ??
-                analyticsObj?.totalSalesRevenue ??
-                liveRevenue
-            ),
+          : Number(overview?.totalRevenue ?? analyticsObj?.totalSalesRevenue ?? liveRevenue),
         completedOrdersCount: backendLooksDemo
           ? liveOrderCount
           : Number(overview?.totalOrders ?? liveOrderCount),
@@ -290,8 +278,7 @@ export default function SellerDashboardPage() {
       await loadData();
     } catch (err) {
       setCreateStoreError(
-        err?.message ||
-          'Failed to create store. Confirm you are logged in as ROLE_SELLER.'
+        err?.message || 'Failed to create store. Confirm you are logged in as ROLE_SELLER.'
       );
     } finally {
       setCreatingStore(false);
@@ -302,14 +289,11 @@ export default function SellerDashboardPage() {
     loadData();
   }, []);
 
-  // Derived stats from real orders (for overview when no time-series API)
   const orderStats = useMemo(() => {
     const list = Array.isArray(orders) ? orders : [];
     const total = list.length || 1;
     const delivered = list.filter((o) => o.status === 'DELIVERED').length;
-    const shipped = list.filter((o) =>
-      ['SHIPPED', 'DELIVERED'].includes(o.status)
-    ).length;
+    const shipped = list.filter((o) => ['SHIPPED', 'DELIVERED'].includes(o.status)).length;
     const cancelled = list.filter((o) => o.status === 'CANCELLED').length;
     return {
       processingRate: ((list.filter((o) => o.status !== 'PENDING').length / total) * 100).toFixed(1),
@@ -347,9 +331,7 @@ export default function SellerDashboardPage() {
         categoryId: currentProduct.categoryId || null,
         stockQuantity: parseInt(currentProduct.stockQuantity, 10) || 0,
         description: currentProduct.description,
-        imageUrls: (currentProduct.imageUrls || []).filter(
-          (url) => url && url.trim() !== ''
-        ),
+        imageUrls: (currentProduct.imageUrls || []).filter((url) => url && url.trim() !== ''),
         featured: !!currentProduct.featured,
       };
 
@@ -379,8 +361,7 @@ export default function SellerDashboardPage() {
       categoryId: prod.categoryId || '',
       stockQuantity: prod.stockQuantity ?? 0,
       description: prod.description || '',
-      imageUrls:
-        prod.imageUrls && prod.imageUrls.length > 0 ? prod.imageUrls : [''],
+      imageUrls: prod.imageUrls && prod.imageUrls.length > 0 ? prod.imageUrls : [''],
       featured: !!prod.featured,
       variants: [
         {
@@ -425,17 +406,57 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // Bulk — no backend; show clear message
+  // ===================== BULK CSV (FIXED) =====================
   const handleBulkCsvUpload = async (e) => {
     e.preventDefault();
-    setBulkStatus(
-      'Bulk CSV import is not connected to the API yet. Use "Add Product" for individual items.'
-    );
-    setTimeout(() => {
-      setIsBulkModalOpen(false);
-      setBulkStatus('');
-      setCsvContent('');
-    }, 2500);
+    setBulkStatus('Uploading...');
+
+    const fileInput = document.getElementById('bulk-csv-file');
+    let file = fileInput?.files?.[0];
+
+    if (!file && csvContent.trim()) {
+      file = new File([csvContent], 'products.csv', { type: 'text/csv' });
+    }
+
+    if (!file) {
+      setBulkStatus('Please select a CSV file or paste content.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await axiosClient.post('/seller/products/bulk-import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const data = res?.data ?? res;
+      const success = data?.successCount ?? 0;
+      const failed = data?.failedCount ?? 0;
+      const errors = data?.errors ?? [];
+
+      let msg = `✅ Successfully imported ${success} product(s).`;
+      if (failed > 0) {
+        msg += ` ${failed} failed.`;
+        if (errors.length > 0) {
+          msg += '\n' + errors.slice(0, 5).join('\n');
+          if (errors.length > 5) msg += `\n...and ${errors.length - 5} more`;
+        }
+      }
+
+      setBulkStatus(msg);
+      await loadData();
+
+      setTimeout(() => {
+        setIsBulkModalOpen(false);
+        setBulkStatus('');
+        setCsvContent('');
+        if (fileInput) fileInput.value = '';
+      }, 4000);
+    } catch (err) {
+      setBulkStatus(err?.message || 'Bulk import failed');
+    }
   };
 
   // Inventory
@@ -471,7 +492,7 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // AI — real assistant endpoint
+  // AI
   const handleAiCopywrite = async () => {
     if (!aiProductKeywords.trim()) {
       alert('Please enter product keywords or details first');
@@ -485,10 +506,10 @@ export default function SellerDashboardPage() {
     try {
       const res = await axiosClient.post('/ai/assistant/chat', {
         message: `You are a product copywriter for an e-commerce seller. Based on these keywords/details: "${aiProductKeywords}". Reply with:
-1) One optimized product title (max 80 chars)
-2) A short product description (2-3 sentences)
-3) Five SEO keywords comma-separated
-4) A suggested retail price in USD as a number only on the last line like PRICE: 99.99`,
+        1) One optimized product title (max 80 chars)
+        2) A short product description (2-3 sentences)
+        3) Five SEO keywords comma-separated
+        4) A suggested retail price in USD as a number only on the last line like PRICE: 99.99`,
       });
 
       const text =
@@ -504,9 +525,7 @@ export default function SellerDashboardPage() {
         .filter(Boolean);
 
       setAiGeneratedTitle(lines[0] || text.slice(0, 80));
-      setAiGeneratedDesc(
-        lines.slice(1, -1).join(' ') || text || 'No description returned.'
-      );
+      setAiGeneratedDesc(lines.slice(1, -1).join(' ') || text || 'No description returned.');
 
       const kwLine =
         lines.find((l) => l.toLowerCase().includes('keyword')) ||
@@ -532,7 +551,6 @@ export default function SellerDashboardPage() {
         });
       }
     } catch (err) {
-      // Fallback local generation if AI service unavailable
       const first = aiProductKeywords.split(',')[0]?.trim() || 'Product';
       setAiGeneratedTitle(`Premium ${first} — Seller Edition`);
       setAiGeneratedDesc(
@@ -545,16 +563,13 @@ export default function SellerDashboardPage() {
           .filter(Boolean)
           .slice(0, 5)
       );
-      alert(
-        err?.message ||
-          'AI service unavailable — used local template instead.'
-      );
+      alert(err?.message || 'AI service unavailable — used local template instead.');
     } finally {
       setIsGeneratingAi(false);
     }
   };
 
-  // Local-only coupon (no API)
+  // Coupon
   const handleCreateCoupon = (e) => {
     e.preventDefault();
     if (!newCoupon.code) return;
@@ -576,12 +591,10 @@ export default function SellerDashboardPage() {
       discountValue: 10,
       minOrderAmount: 0,
     });
-    alert(
-      'Coupon saved locally only. Backend seller-coupon API is not available yet.'
-    );
+    alert('Coupon saved locally only. Backend seller-coupon API is not available yet.');
   };
 
-  // Reviews local reply only
+  // Reviews
   const handleReplyReviewSubmit = (reviewId) => {
     const text = reviewReplyText[reviewId];
     if (!text) return;
@@ -592,15 +605,13 @@ export default function SellerDashboardPage() {
     alert('Reply saved locally. Seller review API is not available yet.');
   };
 
-  // Payout — no API
+  // Payout
   const handleRequestPayout = (e) => {
     e.preventDefault();
-    alert(
-      'Payout / wallet API is not implemented on the backend yet. This action is disabled.'
-    );
+    alert('Payout / wallet API is not implemented on the backend yet. This action is disabled.');
   };
 
-  // Store settings — real API
+  // Store settings
   const handleSaveStoreSettings = async () => {
     setSavingSettings(true);
     try {
@@ -630,16 +641,13 @@ export default function SellerDashboardPage() {
           `"${p.sku || ''}","${p.name || ''}",${p.price ?? 0},${p.stockQuantity ?? 0},"${p.categoryName || ''}",${p.rating ?? ''},"${p.active ? 'Active' : 'Draft'}"`
       );
     } else if (type === 'orders') {
-      headers =
-        'OrderNumber,Customer,Subtotal,Tax,Shipping,Total,Status\n';
+      headers = 'OrderNumber,Customer,Subtotal,Tax,Shipping,Total,Status\n';
       rows = orders.map(
         (o) =>
           `"${o.orderNumber || ''}","${o.userId || ''}",${o.subtotalAmount ?? 0},${o.taxAmount ?? 0},${o.shippingAmount ?? 0},${o.totalAmount ?? 0},"${o.status || ''}"`
       );
     }
-    const blob = new Blob([headers + rows.join('\n')], {
-      type: 'text/csv',
-    });
+    const blob = new Blob([headers + rows.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.setAttribute('href', url);
@@ -656,15 +664,12 @@ export default function SellerDashboardPage() {
     );
   }
 
-  // No SellerStore for this user — must create one before dashboard APIs work
   if (needsStore) {
     return (
       <div className="max-w-xl mx-auto px-4 py-12 space-y-6">
         <div className="text-center space-y-2">
           <Store className="w-10 h-10 text-indigo-400 mx-auto" />
-          <h1 className="text-2xl font-black text-white">
-            Create your seller store
-          </h1>
+          <h1 className="text-2xl font-black text-white">Create your seller store</h1>
           <p className="text-xs text-slate-400 leading-relaxed">
             Your account is a seller, but no <strong className="text-slate-300">SellerStore</strong> exists yet.
             Register a store once — then products, orders, and analytics will load.
@@ -684,48 +689,29 @@ export default function SellerDashboardPage() {
               <input
                 type="text"
                 value={createStoreForm.storeName}
-                onChange={(e) =>
-                  setCreateStoreForm({
-                    ...createStoreForm,
-                    storeName: e.target.value,
-                  })
-                }
+                onChange={(e) => setCreateStoreForm({ ...createStoreForm, storeName: e.target.value })}
                 placeholder="e.g. Apex Gadgets"
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100"
                 required
               />
             </div>
             <div className="space-y-1">
-              <label className="font-semibold text-slate-300">
-                Description *
-              </label>
+              <label className="font-semibold text-slate-300">Description *</label>
               <textarea
                 rows={3}
                 value={createStoreForm.description}
-                onChange={(e) =>
-                  setCreateStoreForm({
-                    ...createStoreForm,
-                    description: e.target.value,
-                  })
-                }
+                onChange={(e) => setCreateStoreForm({ ...createStoreForm, description: e.target.value })}
                 placeholder="What do you sell?"
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100"
                 required
               />
             </div>
             <div className="space-y-1">
-              <label className="font-semibold text-slate-300">
-                Tax ID / Business ID *
-              </label>
+              <label className="font-semibold text-slate-300">Tax ID / Business ID *</label>
               <input
                 type="text"
                 value={createStoreForm.taxId}
-                onChange={(e) =>
-                  setCreateStoreForm({
-                    ...createStoreForm,
-                    taxId: e.target.value,
-                  })
-                }
+                onChange={(e) => setCreateStoreForm({ ...createStoreForm, taxId: e.target.value })}
                 placeholder="e.g. TAX-12345"
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100"
                 required
@@ -733,34 +719,20 @@ export default function SellerDashboardPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="font-semibold text-slate-300">
-                  Logo URL (optional)
-                </label>
+                <label className="font-semibold text-slate-300">Logo URL (optional)</label>
                 <input
                   type="text"
                   value={createStoreForm.logoUrl}
-                  onChange={(e) =>
-                    setCreateStoreForm({
-                      ...createStoreForm,
-                      logoUrl: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setCreateStoreForm({ ...createStoreForm, logoUrl: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100"
                 />
               </div>
               <div className="space-y-1">
-                <label className="font-semibold text-slate-300">
-                  Banner URL (optional)
-                </label>
+                <label className="font-semibold text-slate-300">Banner URL (optional)</label>
                 <input
                   type="text"
                   value={createStoreForm.bannerUrl}
-                  onChange={(e) =>
-                    setCreateStoreForm({
-                      ...createStoreForm,
-                      bannerUrl: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setCreateStoreForm({ ...createStoreForm, bannerUrl: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100"
                 />
               </div>
@@ -814,10 +786,7 @@ export default function SellerDashboardPage() {
                   : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
               }`}
             >
-              <Icon
-                className={`w-4 h-4 ${amber ? 'text-amber-400' : ''}`}
-              />{' '}
-              {label}
+              <Icon className={`w-4 h-4 ${amber ? 'text-amber-400' : ''}`} /> {label}
             </button>
           ))}
         </nav>
@@ -843,13 +812,9 @@ export default function SellerDashboardPage() {
               {storeProfile.storeName || store?.storeName || 'Your Store'}
             </h1>
             <p className="text-xs text-slate-400">
-              {storeProfile.gstin
-                ? `Merchant Tax ID: ${storeProfile.gstin}`
-                : 'Tax ID not set'}
+              {storeProfile.gstin ? `Merchant Tax ID: ${storeProfile.gstin}` : 'Tax ID not set'}
               {store?.verified ? ' · Verified seller' : ''}
-              {store?.rating != null
-                ? ` · ★ ${Number(store.rating).toFixed(1)}`
-                : ''}
+              {store?.rating != null ? ` · ★ ${Number(store.rating).toFixed(1)}` : ''}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -872,145 +837,82 @@ export default function SellerDashboardPage() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">
-                  Total Sales Revenue
-                </span>
-                <p className="text-2xl font-black text-white">
-                  ${money(analytics?.totalSalesRevenue)}
-                </p>
-                <span className="text-[10px] text-indigo-400 font-bold">
-                  From seller dashboard API
-                </span>
+                <span className="text-[11px] text-slate-400 block font-semibold">Total Sales Revenue</span>
+                <p className="text-2xl font-black text-white">${money(analytics?.totalSalesRevenue)}</p>
+                <span className="text-[10px] text-indigo-400 font-bold">From seller dashboard API</span>
               </div>
               <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">
-                  Total Products
-                </span>
-                <p className="text-2xl font-black text-white">
-                  {analytics?.totalProducts ?? products.length}
-                </p>
-                <span className="text-[10px] text-slate-400">
-                  Active catalog items
-                </span>
+                <span className="text-[11px] text-slate-400 block font-semibold">Total Products</span>
+                <p className="text-2xl font-black text-white">{analytics?.totalProducts ?? products.length}</p>
+                <span className="text-[10px] text-slate-400">Active catalog items</span>
               </div>
               <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">
-                  Total Orders
-                </span>
-                <p className="text-2xl font-black text-white">
-                  {analytics?.completedOrdersCount ?? orders.length}
-                </p>
-                <span className="text-[10px] text-slate-400">
-                  All statuses
-                </span>
+                <span className="text-[11px] text-slate-400 block font-semibold">Total Orders</span>
+                <p className="text-2xl font-black text-white">{analytics?.completedOrdersCount ?? orders.length}</p>
+                <span className="text-[10px] text-slate-400">All statuses</span>
               </div>
               <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">
-                  Avg Rating / Low Stock
-                </span>
+                <span className="text-[11px] text-slate-400 block font-semibold">Avg Rating / Low Stock</span>
                 <p className="text-2xl font-black text-white">
-                  ★ {(analytics?.averageRating ?? 0).toFixed(1)} /{' '}
-                  {analytics?.lowStockAlertCount ?? 0}
+                  ★ {(analytics?.averageRating ?? 0).toFixed(1)} / {analytics?.lowStockAlertCount ?? 0}
                 </p>
-                <span className="text-[10px] text-amber-400 font-bold">
-                  Low-stock alerts
-                </span>
+                <span className="text-[10px] text-amber-400 font-bold">Low-stock alerts</span>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-xs font-black uppercase text-indigo-400 tracking-wider">
-                  Order status mix (live)
-                </h3>
+                <h3 className="text-xs font-black uppercase text-indigo-400 tracking-wider">Order status mix (live)</h3>
                 <div className="space-y-3 pt-2 text-xs">
-                  {['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'].map(
-                    (st) => {
-                      const count = orders.filter((o) => o.status === st).length;
-                      const pct =
-                        orders.length > 0
-                          ? Math.round((count / orders.length) * 100)
-                          : 0;
-                      return (
-                        <div key={st} className="space-y-1">
-                          <div className="flex justify-between">
-                            <span className="text-slate-300 font-semibold">
-                              {st}
-                            </span>
-                            <span className="text-white font-black">
-                              {count} ({pct}%)
-                            </span>
-                          </div>
-                          <div className="h-2 bg-slate-950 rounded-full">
-                            <div
-                              className="h-full bg-indigo-500 rounded-full transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
+                  {['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'].map((st) => {
+                    const count = orders.filter((o) => o.status === st).length;
+                    const pct = orders.length > 0 ? Math.round((count / orders.length) * 100) : 0;
+                    return (
+                      <div key={st} className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-300 font-semibold">{st}</span>
+                          <span className="text-white font-black">{count} ({pct}%)</span>
                         </div>
-                      );
-                    }
-                  )}
-                  {orders.length === 0 && (
-                    <p className="text-slate-500 text-xs">
-                      No orders yet for this store.
-                    </p>
-                  )}
+                        <div className="h-2 bg-slate-950 rounded-full">
+                          <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {orders.length === 0 && <p className="text-slate-500 text-xs">No orders yet for this store.</p>}
                 </div>
               </div>
 
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-xs font-black uppercase text-indigo-400 tracking-wider">
-                  Store performance (from orders)
-                </h3>
+                <h3 className="text-xs font-black uppercase text-indigo-400 tracking-wider">Store performance (from orders)</h3>
                 <div className="space-y-4 pt-3 text-xs">
                   <div className="space-y-1">
                     <div className="flex justify-between">
-                      <span className="text-slate-300 font-semibold">
-                        Moved past pending
-                      </span>
-                      <span className="text-white font-black">
-                        {orderStats.processingRate}%
-                      </span>
+                      <span className="text-slate-300 font-semibold">Moved past pending</span>
+                      <span className="text-white font-black">{orderStats.processingRate}%</span>
                     </div>
                     <div className="h-2 bg-slate-950 rounded-full">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${orderStats.processingRate}%` }}
-                      />
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${orderStats.processingRate}%` }} />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between">
-                      <span className="text-slate-300 font-semibold">
-                        Shipped or delivered
-                      </span>
-                      <span className="text-white font-black">
-                        {orderStats.shipRate}%
-                      </span>
+                      <span className="text-slate-300 font-semibold">Shipped or delivered</span>
+                      <span className="text-white font-black">{orderStats.shipRate}%</span>
                     </div>
                     <div className="h-2 bg-slate-950 rounded-full">
-                      <div
-                        className="h-full bg-indigo-500 rounded-full"
-                        style={{ width: `${orderStats.shipRate}%` }}
-                      />
+                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${orderStats.shipRate}%` }} />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between">
-                      <span className="text-slate-300 font-semibold">
-                        Cancelled ratio
-                      </span>
-                      <span className="text-white font-black">
-                        {orderStats.cancelRate}%
-                      </span>
+                      <span className="text-slate-300 font-semibold">Cancelled ratio</span>
+                      <span className="text-white font-black">{orderStats.cancelRate}%</span>
                     </div>
                     <div className="h-2 bg-slate-950 rounded-full">
                       <div
                         className="h-full bg-rose-500 rounded-full"
-                        style={{
-                          width: `${Math.min(100, Number(orderStats.cancelRate))}%`,
-                        }}
+                        style={{ width: `${Math.min(100, Number(orderStats.cancelRate))}%` }}
                       />
                     </div>
                   </div>
@@ -1053,7 +955,6 @@ export default function SellerDashboardPage() {
                 <button
                   onClick={() => setIsBulkModalOpen(true)}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5"
-                  title="CSV import not wired to API yet"
                 >
                   <FileSpreadsheet className="w-4 h-4" /> Bulk CSV
                 </button>
@@ -1083,10 +984,7 @@ export default function SellerDashboardPage() {
                   <tbody className="divide-y divide-slate-800/80">
                     {filteredProducts.length === 0 && (
                       <tr>
-                        <td
-                          colSpan={7}
-                          className="p-8 text-center text-slate-500"
-                        >
+                        <td colSpan={7} className="p-8 text-center text-slate-500">
                           No products found. Add your first product.
                         </td>
                       </tr>
@@ -1097,54 +995,35 @@ export default function SellerDashboardPage() {
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-lg bg-slate-800 overflow-hidden shrink-0 border border-slate-700 flex items-center justify-center">
                               {prod.imageUrls && prod.imageUrls[0] ? (
-                                <img
-                                  src={prod.imageUrls[0]}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                />
+                                <img src={prod.imageUrls[0]} alt="" className="w-full h-full object-cover" />
                               ) : (
                                 <Package className="w-5 h-5 text-slate-500" />
                               )}
                             </div>
                             <div>
-                              <span className="font-bold text-white block">
-                                {prod.name}
-                              </span>
+                              <span className="font-bold text-white block">{prod.name}</span>
                               <span className="text-[10px] text-slate-500 font-mono">
                                 {String(prod.id || '').substring(0, 8)}...
                               </span>
                             </div>
                           </div>
                         </td>
-                        <td className="p-4 font-mono font-semibold">
-                          {prod.sku || '—'}
-                        </td>
-                        <td className="p-4 text-slate-400 font-semibold">
-                          {prod.categoryName || 'General'}
-                        </td>
+                        <td className="p-4 font-mono font-semibold">{prod.sku || '—'}</td>
+                        <td className="p-4 text-slate-400 font-semibold">{prod.categoryName || 'General'}</td>
                         <td className="p-4">
-                          <span className="font-extrabold text-white">
-                            ${money(prod.price)}
-                          </span>
+                          <span className="font-extrabold text-white">${money(prod.price)}</span>
                           {prod.compareAtPrice != null && (
                             <span className="text-[10px] text-slate-500 line-through block">
                               ${money(prod.compareAtPrice)}
                             </span>
                           )}
                         </td>
-                        <td className="p-4 font-mono font-bold text-slate-300">
-                          {prod.stockQuantity ?? 0} units
-                        </td>
+                        <td className="p-4 font-mono font-bold text-slate-300">{prod.stockQuantity ?? 0} units</td>
                         <td className="p-4">
                           <span className="text-amber-400 font-bold">
-                            ★{' '}
-                            {prod.rating != null
-                              ? Number(prod.rating).toFixed(1)
-                              : '—'}
+                            ★ {prod.rating != null ? Number(prod.rating).toFixed(1) : '—'}
                           </span>
-                          <span className="text-slate-500 text-[10px] block">
-                            ({prod.reviewCount ?? 0} reviews)
-                          </span>
+                          <span className="text-slate-500 text-[10px] block">({prod.reviewCount ?? 0} reviews)</span>
                         </td>
                         <td className="p-4 text-right space-x-2">
                           <button
@@ -1185,11 +1064,7 @@ export default function SellerDashboardPage() {
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
               <span>
                 <strong>Warehouse Alerts:</strong>{' '}
-                {
-                  inventoryList.filter((i) => i.lowStock || i.outOfStock)
-                    .length
-                }{' '}
-                products below safety reserves.
+                {inventoryList.filter((i) => i.lowStock || i.outOfStock).length} products below safety reserves.
               </span>
             </div>
 
@@ -1207,28 +1082,16 @@ export default function SellerDashboardPage() {
                 <tbody className="divide-y divide-slate-800">
                   {inventoryList.length === 0 && (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="p-8 text-center text-slate-500"
-                      >
+                      <td colSpan={5} className="p-8 text-center text-slate-500">
                         No inventory rows yet.
                       </td>
                     </tr>
                   )}
                   {inventoryList.map((item) => (
-                    <tr
-                      key={item.productId}
-                      className="hover:bg-slate-900/40"
-                    >
-                      <td className="p-4 font-mono font-bold text-white">
-                        {item.productSku}
-                      </td>
-                      <td className="p-4 font-semibold text-slate-200">
-                        {item.productName}
-                      </td>
-                      <td className="p-4 font-mono text-sm text-white font-extrabold">
-                        {item.currentStock} units
-                      </td>
+                    <tr key={item.productId} className="hover:bg-slate-900/40">
+                      <td className="p-4 font-mono font-bold text-white">{item.productSku}</td>
+                      <td className="p-4 font-semibold text-slate-200">{item.productName}</td>
+                      <td className="p-4 font-mono text-sm text-white font-extrabold">{item.currentStock} units</td>
                       <td className="p-4">
                         {item.outOfStock ? (
                           <span className="px-2.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 text-[10px] font-bold">
@@ -1270,21 +1133,12 @@ export default function SellerDashboardPage() {
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs">
-                {[
-                  'ALL',
-                  'PENDING',
-                  'PROCESSING',
-                  'SHIPPED',
-                  'DELIVERED',
-                  'CANCELLED',
-                ].map((st) => (
+                {['ALL', 'PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'].map((st) => (
                   <button
                     key={st}
                     onClick={() => setOrderStatusFilter(st)}
                     className={`px-3 py-1.5 rounded-lg font-bold transition ${
-                      orderStatusFilter === st
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-400 hover:text-white'
+                      orderStatusFilter === st ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     {st}
@@ -1316,10 +1170,7 @@ export default function SellerDashboardPage() {
                   <tbody className="divide-y divide-slate-800">
                     {filteredOrders.length === 0 && (
                       <tr>
-                        <td
-                          colSpan={6}
-                          className="p-8 text-center text-slate-500"
-                        >
+                        <td colSpan={6} className="p-8 text-center text-slate-500">
                           No orders for this filter.
                         </td>
                       </tr>
@@ -1327,32 +1178,20 @@ export default function SellerDashboardPage() {
                     {filteredOrders.map((ord) => (
                       <tr key={ord.id} className="hover:bg-slate-900/40">
                         <td className="p-4">
-                          <span className="font-bold text-white block">
-                            {ord.orderNumber}
-                          </span>
+                          <span className="font-bold text-white block">{ord.orderNumber}</span>
                           <span className="text-[10px] text-slate-500 font-mono block">
-                            {ord.createdAt
-                              ? new Date(ord.createdAt).toLocaleDateString()
-                              : '—'}
+                            {ord.createdAt ? new Date(ord.createdAt).toLocaleDateString() : '—'}
                           </span>
                         </td>
-                        <td className="p-4 font-mono text-indigo-300">
-                          {ord.userId || '—'}
-                        </td>
+                        <td className="p-4 font-mono text-indigo-300">{ord.userId || '—'}</td>
                         <td className="p-4 space-y-0.5">
-                          <span className="block font-semibold text-slate-200">
-                            {ord.shippingMethod || '—'}
-                          </span>
+                          <span className="block font-semibold text-slate-200">{ord.shippingMethod || '—'}</span>
                           <span className="text-[10px] text-slate-400 block">
-                            {[ord.shippingAddressLine1, ord.shippingCity]
-                              .filter(Boolean)
-                              .join(', ') || '—'}
+                            {[ord.shippingAddressLine1, ord.shippingCity].filter(Boolean).join(', ') || '—'}
                           </span>
                         </td>
                         <td className="p-4">
-                          <span className="font-extrabold text-white block">
-                            ${money(ord.totalAmount)}
-                          </span>
+                          <span className="font-extrabold text-white block">${money(ord.totalAmount)}</span>
                         </td>
                         <td className="p-4">
                           <span
@@ -1383,12 +1222,7 @@ export default function SellerDashboardPage() {
                           </button>
                           {ord.status === 'PENDING' && (
                             <button
-                              onClick={() =>
-                                handleOrderStatusUpdate(
-                                  ord.orderNumber,
-                                  'PROCESSING'
-                                )
-                              }
+                              onClick={() => handleOrderStatusUpdate(ord.orderNumber, 'PROCESSING')}
                               className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold text-[11px]"
                             >
                               Accept
@@ -1396,12 +1230,7 @@ export default function SellerDashboardPage() {
                           )}
                           {ord.status === 'PROCESSING' && (
                             <button
-                              onClick={() =>
-                                handleOrderStatusUpdate(
-                                  ord.orderNumber,
-                                  'SHIPPED'
-                                )
-                              }
+                              onClick={() => handleOrderStatusUpdate(ord.orderNumber, 'SHIPPED')}
                               className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold text-[11px]"
                             >
                               Dispatch
@@ -1409,12 +1238,7 @@ export default function SellerDashboardPage() {
                           )}
                           {ord.status === 'SHIPPED' && (
                             <button
-                              onClick={() =>
-                                handleOrderStatusUpdate(
-                                  ord.orderNumber,
-                                  'DELIVERED'
-                                )
-                              }
+                              onClick={() => handleOrderStatusUpdate(ord.orderNumber, 'DELIVERED')}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-[11px]"
                             >
                               Delivered
@@ -1441,11 +1265,7 @@ export default function SellerDashboardPage() {
                 {Array.from(
                   orders.reduce((map, o) => {
                     const key = o.userId || 'unknown';
-                    const prev = map.get(key) || {
-                      id: key,
-                      spent: 0,
-                      count: 0,
-                    };
+                    const prev = map.get(key) || { id: key, spent: 0, count: 0 };
                     prev.spent += Number(o.totalAmount) || 0;
                     prev.count += 1;
                     map.set(key, prev);
@@ -1460,64 +1280,40 @@ export default function SellerDashboardPage() {
                       className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between"
                     >
                       <div>
-                        <p className="font-extrabold text-white font-mono text-[11px]">
-                          {id}
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          Buyer ID
-                        </p>
+                        <p className="font-extrabold text-white font-mono text-[11px]">{id}</p>
+                        <p className="text-[10px] text-slate-500">Buyer ID</p>
                       </div>
                       <div className="text-right">
-                        <span className="font-black text-emerald-400 block">
-                          ${money(c.spent)} spent
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {c.count} orders
-                        </span>
+                        <span className="font-black text-emerald-400 block">${money(c.spent)} spent</span>
+                        <span className="text-[10px] text-slate-400">{c.count} orders</span>
                       </div>
                     </div>
                   ))}
                 {orders.length === 0 && (
-                  <p className="text-slate-500 col-span-2">
-                    No customer data yet — orders will appear here.
-                  </p>
+                  <p className="text-slate-500 col-span-2">No customer data yet — orders will appear here.</p>
                 )}
               </div>
             </div>
 
             <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
-                Reviews
-              </h3>
+              <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Reviews</h3>
               {reviews.length === 0 ? (
                 <p className="text-xs text-slate-500">
-                  No seller reviews API is available yet. When backend
-                  exposes <code className="text-indigo-400">/seller/reviews</code>,
-                  this section will load dynamically.
+                  No seller reviews API is available yet. When backend exposes{' '}
+                  <code className="text-indigo-400">/seller/reviews</code>, this section will load dynamically.
                 </p>
               ) : (
                 <div className="space-y-4">
                   {reviews.map((rev) => (
-                    <div
-                      key={rev.id}
-                      className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-3 text-xs"
-                    >
+                    <div key={rev.id} className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-3 text-xs">
                       <div className="flex justify-between items-center">
                         <div>
-                          <span className="font-extrabold text-white block">
-                            {rev.customerName}
-                          </span>
-                          <span className="text-[10px] text-indigo-400 font-mono">
-                            Product: {rev.productName}
-                          </span>
+                          <span className="font-extrabold text-white block">{rev.customerName}</span>
+                          <span className="text-[10px] text-indigo-400 font-mono">Product: {rev.productName}</span>
                         </div>
-                        <span className="text-amber-400 font-black text-sm">
-                          ★ {rev.rating}.0 / 5.0
-                        </span>
+                        <span className="text-amber-400 font-black text-sm">★ {rev.rating}.0 / 5.0</span>
                       </div>
-                      <p className="text-slate-300 italic">
-                        &quot;{rev.comment}&quot;
-                      </p>
+                      <p className="text-slate-300 italic">&quot;{rev.comment}&quot;</p>
                       {rev.reply ? (
                         <div className="p-3 bg-indigo-950/40 border border-indigo-900 rounded-xl">
                           <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest block mb-0.5">
@@ -1532,10 +1328,7 @@ export default function SellerDashboardPage() {
                             placeholder="Reply..."
                             value={reviewReplyText[rev.id] || ''}
                             onChange={(e) =>
-                              setReviewReplyText({
-                                ...reviewReplyText,
-                                [rev.id]: e.target.value,
-                              })
+                              setReviewReplyText({ ...reviewReplyText, [rev.id]: e.target.value })
                             }
                             className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100"
                           />
@@ -1559,46 +1352,29 @@ export default function SellerDashboardPage() {
         {activeSubTab === 'marketing' && (
           <div className="space-y-4">
             <p className="text-xs text-amber-300/90 bg-amber-950/30 border border-amber-900 rounded-xl px-3 py-2">
-              Coupons are stored in the browser only. There is no seller-scoped
-              coupon API yet (admin coupons exist separately).
+              Coupons are stored in the browser only. There is no seller-scoped coupon API yet (admin coupons exist separately).
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
-                  Create coupon (local)
-                </h3>
+                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Create coupon (local)</h3>
                 <form onSubmit={handleCreateCoupon} className="space-y-3 text-xs">
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-300">
-                      Promo code
-                    </label>
+                    <label className="font-semibold text-slate-300">Promo code</label>
                     <input
                       type="text"
                       placeholder="e.g. SPECIAL10"
                       value={newCoupon.code}
-                      onChange={(e) =>
-                        setNewCoupon({
-                          ...newCoupon,
-                          code: e.target.value.toUpperCase(),
-                        })
-                      }
+                      onChange={(e) => setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 font-mono"
                       required
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="font-semibold text-slate-300">
-                        Type
-                      </label>
+                      <label className="font-semibold text-slate-300">Type</label>
                       <select
                         value={newCoupon.discountType}
-                        onChange={(e) =>
-                          setNewCoupon({
-                            ...newCoupon,
-                            discountType: e.target.value,
-                          })
-                        }
+                        onChange={(e) => setNewCoupon({ ...newCoupon, discountType: e.target.value })}
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                       >
                         <option value="PERCENTAGE">Percentage (%)</option>
@@ -1606,56 +1382,35 @@ export default function SellerDashboardPage() {
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="font-semibold text-slate-300">
-                        Value
-                      </label>
+                      <label className="font-semibold text-slate-300">Value</label>
                       <input
                         type="number"
                         value={newCoupon.discountValue}
-                        onChange={(e) =>
-                          setNewCoupon({
-                            ...newCoupon,
-                            discountValue: e.target.value,
-                          })
-                        }
+                        onChange={(e) => setNewCoupon({ ...newCoupon, discountValue: e.target.value })}
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                         required
                       />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-300">
-                      Min order ($)
-                    </label>
+                    <label className="font-semibold text-slate-300">Min order ($)</label>
                     <input
                       type="number"
                       value={newCoupon.minOrderAmount}
-                      onChange={(e) =>
-                        setNewCoupon({
-                          ...newCoupon,
-                          minOrderAmount: e.target.value,
-                        })
-                      }
+                      onChange={(e) => setNewCoupon({ ...newCoupon, minOrderAmount: e.target.value })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                     />
                   </div>
-                  <button
-                    type="submit"
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold"
-                  >
+                  <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold">
                     Add local coupon
                   </button>
                 </form>
               </div>
 
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
-                  Active coupons
-                </h3>
+                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Active coupons</h3>
                 <div className="space-y-3 overflow-y-auto max-h-72">
-                  {coupons.length === 0 && (
-                    <p className="text-xs text-slate-500">No coupons yet.</p>
-                  )}
+                  {coupons.length === 0 && <p className="text-xs text-slate-500">No coupons yet.</p>}
                   {coupons.map((c) => (
                     <div
                       key={c.id}
@@ -1665,19 +1420,13 @@ export default function SellerDashboardPage() {
                         <span className="font-extrabold text-white bg-slate-800 border border-slate-700 px-2 py-0.5 rounded font-mono">
                           {c.code}
                         </span>
-                        <span className="text-[10px] text-slate-400 block mt-1">
-                          Min: ${c.minOrderAmount}
-                        </span>
+                        <span className="text-[10px] text-slate-400 block mt-1">Min: ${c.minOrderAmount}</span>
                       </div>
                       <div className="text-right">
                         <span className="font-black text-indigo-400 text-sm block">
-                          {c.discountType === 'PERCENTAGE'
-                            ? `${c.discountValue}% OFF`
-                            : `$${c.discountValue} OFF`}
+                          {c.discountType === 'PERCENTAGE' ? `${c.discountValue}% OFF` : `$${c.discountValue} OFF`}
                         </span>
-                        <span className="text-[9px] text-slate-500 font-bold uppercase block">
-                          local only
-                        </span>
+                        <span className="text-[9px] text-slate-500 font-bold uppercase block">local only</span>
                       </div>
                     </div>
                   ))}
@@ -1691,27 +1440,17 @@ export default function SellerDashboardPage() {
         {activeSubTab === 'finance' && (
           <div className="space-y-6">
             <p className="text-xs text-amber-300/90 bg-amber-950/30 border border-amber-900 rounded-xl px-3 py-2">
-              Wallet / payout APIs are not implemented. Figures below use live
-              revenue from the dashboard API only.
+              Wallet / payout APIs are not implemented. Figures below use live revenue from the dashboard API only.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
-                <span className="text-xs text-slate-400">
-                  Gross sales (API)
-                </span>
-                <p className="text-2xl font-black text-emerald-400">
-                  ${money(analytics?.totalSalesRevenue)}
-                </p>
+                <span className="text-xs text-slate-400">Gross sales (API)</span>
+                <p className="text-2xl font-black text-emerald-400">${money(analytics?.totalSalesRevenue)}</p>
               </div>
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
-                <span className="text-xs text-slate-400">
-                  Est. after 15% platform fee
-                </span>
+                <span className="text-xs text-slate-400">Est. after 15% platform fee</span>
                 <p className="text-2xl font-black text-white">
-                  $
-                  {money(
-                    (Number(analytics?.totalSalesRevenue) || 0) * 0.85
-                  )}
+                  ${money((Number(analytics?.totalSalesRevenue) || 0) * 0.85)}
                 </p>
               </div>
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
@@ -1724,14 +1463,10 @@ export default function SellerDashboardPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
-                  Request payout
-                </h3>
+                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Request payout</h3>
                 <form onSubmit={handleRequestPayout} className="space-y-3 text-xs">
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-300">
-                      Amount ($)
-                    </label>
+                    <label className="font-semibold text-slate-300">Amount ($)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1749,9 +1484,7 @@ export default function SellerDashboardPage() {
                 </form>
               </div>
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
-                  Payout history
-                </h3>
+                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Payout history</h3>
                 {payouts.length === 0 ? (
                   <p className="text-xs text-slate-500">No payouts recorded.</p>
                 ) : (
@@ -1760,9 +1493,7 @@ export default function SellerDashboardPage() {
                       key={p.id}
                       className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex justify-between text-xs font-mono"
                     >
-                      <span className="text-white font-bold">
-                        ${money(p.amount)}
-                      </span>
+                      <span className="text-white font-bold">${money(p.amount)}</span>
                       <span className="text-slate-400">{p.status}</span>
                     </div>
                   ))
@@ -1778,15 +1509,11 @@ export default function SellerDashboardPage() {
             <div className="glass-panel p-5 rounded-3xl border border-amber-900/60 bg-amber-950/20 space-y-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-amber-400" />
-                <h3 className="text-sm font-black uppercase text-amber-400 tracking-wider">
-                  AI copywriter
-                </h3>
+                <h3 className="text-sm font-black uppercase text-amber-400 tracking-wider">AI copywriter</h3>
               </div>
               <div className="space-y-3 text-xs">
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Product keywords / details
-                  </label>
+                  <label className="font-semibold text-slate-300">Product keywords / details</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -1809,25 +1536,19 @@ export default function SellerDashboardPage() {
                 {aiGeneratedTitle && (
                   <div className="space-y-4 p-4 bg-slate-900/80 border border-slate-800 rounded-2xl">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase">
-                        Title
-                      </span>
+                      <span className="text-[10px] font-bold text-indigo-400 uppercase">Title</span>
                       <p className="font-bold text-white text-sm bg-slate-950 border border-slate-800 p-2.5 rounded-xl">
                         {aiGeneratedTitle}
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase">
-                        Description
-                      </span>
+                      <span className="text-[10px] font-bold text-indigo-400 uppercase">Description</span>
                       <p className="text-slate-300 bg-slate-950 border border-slate-800 p-2.5 rounded-xl leading-relaxed">
                         {aiGeneratedDesc}
                       </p>
                     </div>
                     <div className="space-y-2">
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase block">
-                        Keywords
-                      </span>
+                      <span className="text-[10px] font-bold text-indigo-400 uppercase block">Keywords</span>
                       <div className="flex flex-wrap gap-1.5">
                         {aiGeneratedKeywords.map((kw, i) => (
                           <span
@@ -1842,36 +1563,20 @@ export default function SellerDashboardPage() {
                     {aiPriceRecommendation && (
                       <div className="p-3 bg-indigo-950/30 border border-indigo-900 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                         <div>
-                          <span className="text-[10px] text-slate-500 block">
-                            Recommended
-                          </span>
-                          <span className="font-black text-emerald-400">
-                            ${aiPriceRecommendation.recommendedPrice}
-                          </span>
+                          <span className="text-[10px] text-slate-500 block">Recommended</span>
+                          <span className="font-black text-emerald-400">${aiPriceRecommendation.recommendedPrice}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-500 block">
-                            Market avg
-                          </span>
-                          <span className="font-black text-slate-300">
-                            ${aiPriceRecommendation.marketAverage}
-                          </span>
+                          <span className="text-[10px] text-slate-500 block">Market avg</span>
+                          <span className="font-black text-slate-300">${aiPriceRecommendation.marketAverage}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-500 block">
-                            High
-                          </span>
-                          <span className="font-black text-slate-300">
-                            ${aiPriceRecommendation.competitorHigh}
-                          </span>
+                          <span className="text-[10px] text-slate-500 block">High</span>
+                          <span className="font-black text-slate-300">${aiPriceRecommendation.competitorHigh}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-500 block">
-                            Margin
-                          </span>
-                          <span className="font-black text-indigo-400">
-                            {aiPriceRecommendation.profitMargin}
-                          </span>
+                          <span className="text-[10px] text-slate-500 block">Margin</span>
+                          <span className="font-black text-indigo-400">{aiPriceRecommendation.profitMargin}</span>
                         </div>
                       </div>
                     )}
@@ -1886,95 +1591,57 @@ export default function SellerDashboardPage() {
         {activeSubTab === 'settings' && (
           <div className="space-y-6">
             <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4 text-xs">
-              <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
-                Store profile
-              </h3>
+              <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Store profile</h3>
               <p className="text-slate-500">
-                Saved fields: storeName, description, logoUrl, bannerUrl, taxId
-                (GSTIN). Bank / policy fields are local-only until backend
-                supports them.
+                Saved fields: storeName, description, logoUrl, bannerUrl, taxId (GSTIN). Bank / policy fields are
+                local-only until backend supports them.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Store name
-                  </label>
+                  <label className="font-semibold text-slate-300">Store name</label>
                   <input
                     type="text"
                     value={storeProfile.storeName}
-                    onChange={(e) =>
-                      setStoreProfile({
-                        ...storeProfile,
-                        storeName: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setStoreProfile({ ...storeProfile, storeName: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Tax ID / GSTIN
-                  </label>
+                  <label className="font-semibold text-slate-300">Tax ID / GSTIN</label>
                   <input
                     type="text"
                     value={storeProfile.gstin}
-                    onChange={(e) =>
-                      setStoreProfile({
-                        ...storeProfile,
-                        gstin: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setStoreProfile({ ...storeProfile, gstin: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Logo URL
-                  </label>
+                  <label className="font-semibold text-slate-300">Logo URL</label>
                   <input
                     type="text"
                     value={storeProfile.logoUrl}
-                    onChange={(e) =>
-                      setStoreProfile({
-                        ...storeProfile,
-                        logoUrl: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setStoreProfile({ ...storeProfile, logoUrl: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Banner URL
-                  </label>
+                  <label className="font-semibold text-slate-300">Banner URL</label>
                   <input
                     type="text"
                     value={storeProfile.bannerUrl}
-                    onChange={(e) =>
-                      setStoreProfile({
-                        ...storeProfile,
-                        bannerUrl: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setStoreProfile({ ...storeProfile, bannerUrl: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-slate-300">
-                  Description
-                </label>
+                <label className="font-semibold text-slate-300">Description</label>
                 <textarea
                   rows={3}
                   value={storeProfile.description}
-                  onChange={(e) =>
-                    setStoreProfile({
-                      ...storeProfile,
-                      description: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setStoreProfile({ ...storeProfile, description: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                 />
               </div>
@@ -2000,13 +1667,9 @@ export default function SellerDashboardPage() {
           <div className="glass-panel w-full max-w-2xl p-6 rounded-3xl space-y-4 relative border border-slate-800 max-h-[90vh] overflow-y-auto my-8">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Package className="w-4 h-4 text-indigo-400" />{' '}
-                {isEditing ? 'Edit product' : 'Add product'}
+                <Package className="w-4 h-4 text-indigo-400" /> {isEditing ? 'Edit product' : 'Add product'}
               </h3>
-              <button
-                onClick={() => setIsProductModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setIsProductModalOpen(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -2019,27 +1682,15 @@ export default function SellerDashboardPage() {
                     type="text"
                     required
                     value={currentProduct.name}
-                    onChange={(e) =>
-                      setCurrentProduct({
-                        ...currentProduct,
-                        name: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setCurrentProduct({ ...currentProduct, name: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Category
-                  </label>
+                  <label className="font-semibold text-slate-300">Category</label>
                   <select
                     value={currentProduct.categoryId}
-                    onChange={(e) =>
-                      setCurrentProduct({
-                        ...currentProduct,
-                        categoryId: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setCurrentProduct({ ...currentProduct, categoryId: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   >
                     <option value="">Select category</option>
@@ -2054,37 +1705,23 @@ export default function SellerDashboardPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Price ($)
-                  </label>
+                  <label className="font-semibold text-slate-300">Price ($)</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={currentProduct.price}
-                    onChange={(e) =>
-                      setCurrentProduct({
-                        ...currentProduct,
-                        price: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setCurrentProduct({ ...currentProduct, price: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">
-                    Compare at ($)
-                  </label>
+                  <label className="font-semibold text-slate-300">Compare at ($)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={currentProduct.compareAtPrice}
-                    onChange={(e) =>
-                      setCurrentProduct({
-                        ...currentProduct,
-                        compareAtPrice: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setCurrentProduct({ ...currentProduct, compareAtPrice: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
@@ -2094,21 +1731,14 @@ export default function SellerDashboardPage() {
                     type="number"
                     required
                     value={currentProduct.stockQuantity}
-                    onChange={(e) =>
-                      setCurrentProduct({
-                        ...currentProduct,
-                        stockQuantity: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setCurrentProduct({ ...currentProduct, stockQuantity: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="font-semibold text-slate-300 block">
-                  Image URLs
-                </label>
+                <label className="font-semibold text-slate-300 block">Image URLs</label>
                 {currentProduct.imageUrls.map((url, index) => (
                   <div key={index} className="flex gap-2">
                     <input
@@ -2118,10 +1748,7 @@ export default function SellerDashboardPage() {
                       onChange={(e) => {
                         const newUrls = [...currentProduct.imageUrls];
                         newUrls[index] = e.target.value;
-                        setCurrentProduct({
-                          ...currentProduct,
-                          imageUrls: newUrls,
-                        });
+                        setCurrentProduct({ ...currentProduct, imageUrls: newUrls });
                       }}
                       className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                     />
@@ -2129,13 +1756,8 @@ export default function SellerDashboardPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          const newUrls = currentProduct.imageUrls.filter(
-                            (_, i) => i !== index
-                          );
-                          setCurrentProduct({
-                            ...currentProduct,
-                            imageUrls: newUrls,
-                          });
+                          const newUrls = currentProduct.imageUrls.filter((_, i) => i !== index);
+                          setCurrentProduct({ ...currentProduct, imageUrls: newUrls });
                         }}
                         className="px-3 py-2 bg-slate-900 border border-slate-800 text-rose-400 rounded-xl"
                       >
@@ -2159,18 +1781,11 @@ export default function SellerDashboardPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-slate-300">
-                  Description
-                </label>
+                <label className="font-semibold text-slate-300">Description</label>
                 <textarea
                   rows={4}
                   value={currentProduct.description}
-                  onChange={(e) =>
-                    setCurrentProduct({
-                      ...currentProduct,
-                      description: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setCurrentProduct({ ...currentProduct, description: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                 />
               </div>
@@ -2180,18 +1795,10 @@ export default function SellerDashboardPage() {
                   type="checkbox"
                   id="featured"
                   checked={currentProduct.featured}
-                  onChange={(e) =>
-                    setCurrentProduct({
-                      ...currentProduct,
-                      featured: e.target.checked,
-                    })
-                  }
+                  onChange={(e) => setCurrentProduct({ ...currentProduct, featured: e.target.checked })}
                   className="w-4 h-4 accent-indigo-600 rounded"
                 />
-                <label
-                  htmlFor="featured"
-                  className="font-semibold text-slate-300"
-                >
+                <label htmlFor="featured" className="font-semibold text-slate-300">
                   Feature on homepage
                 </label>
               </div>
@@ -2216,52 +1823,82 @@ export default function SellerDashboardPage() {
         </div>
       )}
 
-      {/* BULK CSV */}
+      {/* BULK CSV MODAL */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="glass-panel w-full max-w-md p-6 rounded-3xl space-y-4 relative border border-slate-800">
+          <div className="glass-panel w-full max-w-lg p-6 rounded-3xl space-y-4 relative border border-slate-800">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Bulk
-                CSV
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Bulk CSV Import
               </h3>
               <button
-                onClick={() => setIsBulkModalOpen(false)}
+                onClick={() => {
+                  setIsBulkModalOpen(false);
+                  setBulkStatus('');
+                  setCsvContent('');
+                }}
                 className="text-slate-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
             {bulkStatus ? (
               <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-center space-y-2">
-                <p className="text-xs font-bold text-white">{bulkStatus}</p>
+                <p className="text-xs font-bold text-white whitespace-pre-wrap">{bulkStatus}</p>
               </div>
             ) : (
               <form onSubmit={handleBulkCsvUpload} className="space-y-4 text-xs">
-                <p className="text-amber-300">
-                  Backend bulk-import endpoint is not available. Prefer Add
-                  Product for now.
-                </p>
-                <textarea
-                  value={csvContent}
-                  onChange={(e) => setCsvContent(e.target.value)}
-                  rows={5}
-                  placeholder="SKU,Name,Price,Stock..."
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-[11px] text-slate-100"
-                />
-                <div className="flex justify-end gap-2">
+                <div className="p-3 bg-slate-900/80 border border-slate-700 rounded-xl text-slate-300 space-y-1">
+                  <p className="font-semibold text-white">Expected CSV columns:</p>
+                  <p className="font-mono text-[11px] break-all">
+                    name,price,categorySlug,stockQuantity,description,compareAtPrice,imageUrls,featured
+                  </p>
+                  <p className="text-slate-400 mt-1">
+                    • <strong>categorySlug</strong> (or category / categoryId) is required<br />
+                    • imageUrls can be pipe-separated: url1|url2<br />
+                    • featured = true / false / 1 / 0
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block mb-1.5 font-semibold text-slate-300">Upload CSV file</label>
+                  <input
+                    id="bulk-csv-file"
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="w-full text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:text-xs file:font-semibold hover:file:bg-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block mb-1.5 font-semibold text-slate-300">Or paste CSV content</label>
+                  <textarea
+                    value={csvContent}
+                    onChange={(e) => setCsvContent(e.target.value)}
+                    rows={6}
+                    placeholder={`name,price,categorySlug,stockQuantity,description\nWireless Mouse,29.99,electronics,100,Ergonomic mouse`}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-[11px] text-slate-100 focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                   <button
                     type="button"
-                    onClick={() => setIsBulkModalOpen(false)}
-                    className="px-4 py-2 bg-slate-900 border border-slate-700 text-slate-300 rounded-xl"
+                    onClick={() => {
+                      setIsBulkModalOpen(false);
+                      setBulkStatus('');
+                      setCsvContent('');
+                    }}
+                    className="px-4 py-2 bg-slate-900 border border-slate-700 text-slate-300 rounded-xl font-semibold"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold"
                   >
-                    Try import
+                    Import Products
                   </button>
                 </div>
               </form>
@@ -2278,10 +1915,7 @@ export default function SellerDashboardPage() {
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <FileText className="w-4 h-4 text-indigo-400" /> Invoice
               </h3>
-              <button
-                onClick={() => setIsInvoiceModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setIsInvoiceModalOpen(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -2293,27 +1927,19 @@ export default function SellerDashboardPage() {
                     {storeProfile.storeName || 'Store'}
                   </h2>
                   {storeProfile.gstin && (
-                    <p className="text-[10px] text-slate-500">
-                      Tax ID: {storeProfile.gstin}
-                    </p>
+                    <p className="text-[10px] text-slate-500">Tax ID: {storeProfile.gstin}</p>
                   )}
                 </div>
                 <div className="text-right">
                   <p className="font-mono">#{selectedOrder.orderNumber}</p>
                   <p className="text-slate-500">
-                    {selectedOrder.createdAt
-                      ? new Date(
-                          selectedOrder.createdAt
-                        ).toLocaleDateString()
-                      : ''}
+                    {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString() : ''}
                   </p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 text-[10px]">
                 <div>
-                  <span className="font-bold text-slate-500 uppercase block mb-1">
-                    Ship to
-                  </span>
+                  <span className="font-bold text-slate-500 uppercase block mb-1">Ship to</span>
                   <p className="font-extrabold">{selectedOrder.userId}</p>
                   <p>
                     {[
@@ -2327,15 +1953,11 @@ export default function SellerDashboardPage() {
                   </p>
                 </div>
                 <div>
-                  <span className="font-bold text-slate-500 uppercase block mb-1">
-                    Totals
-                  </span>
+                  <span className="font-bold text-slate-500 uppercase block mb-1">Totals</span>
                   <p>Subtotal: ${money(selectedOrder.subtotalAmount)}</p>
                   <p>Tax: ${money(selectedOrder.taxAmount)}</p>
                   <p>Shipping: ${money(selectedOrder.shippingAmount)}</p>
-                  <p className="font-black text-sm">
-                    Total: ${money(selectedOrder.totalAmount)}
-                  </p>
+                  <p className="font-black text-sm">Total: ${money(selectedOrder.totalAmount)}</p>
                 </div>
               </div>
             </div>
@@ -2366,27 +1988,19 @@ export default function SellerDashboardPage() {
           <div className="glass-panel w-full max-w-md p-6 rounded-3xl space-y-4 relative border border-slate-800">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-indigo-400" /> Restock:{' '}
-                {selectedInventoryItem.productName}
+                <Layers className="w-4 h-4 text-indigo-400" /> Restock: {selectedInventoryItem.productName}
               </h3>
-              <button
-                onClick={() => setIsRestockOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setIsRestockOpen(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleRestockSubmit} className="space-y-4 text-xs">
               <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex justify-between">
                 <span className="text-slate-400">Current stock</span>
-                <span className="font-extrabold text-white">
-                  {selectedInventoryItem.currentStock} units
-                </span>
+                <span className="font-extrabold text-white">{selectedInventoryItem.currentStock} units</span>
               </div>
               <div className="space-y-1">
-                <label className="font-semibold text-slate-300">
-                  Quantity change (+ / −)
-                </label>
+                <label className="font-semibold text-slate-300">Quantity change (+ / −)</label>
                 <input
                   type="number"
                   value={restockQty}

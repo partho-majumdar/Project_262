@@ -2,7 +2,9 @@ package com.groupmart.service;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
+import com.groupmart.dto.product.BulkImportResultDto;
 import com.groupmart.dto.product.CreateProductRequest;
 import com.groupmart.dto.product.ProductDto;
 import com.groupmart.dto.product.UpdateProductRequest;
@@ -35,4 +37,6 @@ public interface ProductService {
     void deleteProduct(String userEmail, UUID id);
 
     List<ProductDto> getProductsBySellerEmail(String userEmail);
+
+    BulkImportResultDto bulkImportProducts(String userEmail, MultipartFile file);
 }
