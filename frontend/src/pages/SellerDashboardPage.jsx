@@ -406,8 +406,8 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // ===================== BULK CSV (FIXED) =====================
-    const handleBulkCsvUpload = async (e) => {
+  // ===================== BULK CSV =====================
+  const handleBulkCsvUpload = async (e) => {
     e.preventDefault();
     setBulkStatus('Uploading...');
 
@@ -427,14 +427,12 @@ export default function SellerDashboardPage() {
     formData.append('file', file);
 
     try {
-      // IMPORTANT: do NOT send application/json
       const res = await axiosClient.post('/seller/products/bulk-import', formData, {
         headers: {
-          'Content-Type': undefined, // removes the default application/json
+          'Content-Type': undefined,
         },
       });
 
-      // axios interceptor already returns response.data (ApiResponse)
       const payload = res?.data ?? res;
       const success = payload?.successCount ?? 0;
       const failed = payload?.failedCount ?? 0;
@@ -645,10 +643,10 @@ export default function SellerDashboardPage() {
           `"${p.sku || ''}","${p.name || ''}",${p.price ?? 0},${p.stockQuantity ?? 0},"${p.categoryName || ''}",${p.rating ?? ''},"${p.active ? 'Active' : 'Draft'}"`
       );
     } else if (type === 'orders') {
-      headers = 'OrderNumber,Customer,Subtotal,Tax,Shipping,Total,Status\n';
+      headers = 'OrderNumber,Customer,Email,Subtotal,Tax,Shipping,Total,Status\n';
       rows = orders.map(
         (o) =>
-          `"${o.orderNumber || ''}","${o.userId || ''}",${o.subtotalAmount ?? 0},${o.taxAmount ?? 0},${o.shippingAmount ?? 0},${o.totalAmount ?? 0},"${o.status || ''}"`
+          `"${o.orderNumber || ''}","${o.userName || ''}","${o.userEmail || ''}",${o.subtotalAmount ?? 0},${o.taxAmount ?? 0},${o.shippingAmount ?? 0},${o.totalAmount ?? 0},"${o.status || ''}"`
       );
     }
     const blob = new Blob([headers + rows.join('\n')], { type: 'text/csv' });
@@ -1187,7 +1185,14 @@ export default function SellerDashboardPage() {
                             {ord.createdAt ? new Date(ord.createdAt).toLocaleDateString() : '—'}
                           </span>
                         </td>
-                        <td className="p-4 font-mono text-indigo-300">{ord.userId || '—'}</td>
+                        <td className="p-4">
+                          <span className="font-semibold text-white block">
+                            {ord.userName || '—'}
+                          </span>
+                          <span className="text-[10px] text-indigo-300 font-mono block">
+                            {ord.userEmail || '—'}
+                          </span>
+                        </td>
                         <td className="p-4 space-y-0.5">
                           <span className="block font-semibold text-slate-200">{ord.shippingMethod || '—'}</span>
                           <span className="text-[10px] text-slate-400 block">
@@ -1248,6 +1253,18 @@ export default function SellerDashboardPage() {
                               Delivered
                             </button>
                           )}
+                          {(ord.status === 'PENDING' || ord.status === 'PROCESSING') && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm('Cancel this order and restore stock?')) {
+                                  handleOrderStatusUpdate(ord.orderNumber, 'CANCELLED');
+                                }
+                              }}
+                              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded font-bold text-[11px]"
+                            >
+                              Cancel
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1268,8 +1285,14 @@ export default function SellerDashboardPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 {Array.from(
                   orders.reduce((map, o) => {
-                    const key = o.userId || 'unknown';
-                    const prev = map.get(key) || { id: key, spent: 0, count: 0 };
+                    const key = o.userEmail || o.userName || 'unknown';
+                    const prev = map.get(key) || {
+                      id: key,
+                      name: o.userName || key,
+                      email: o.userEmail || '',
+                      spent: 0,
+                      count: 0,
+                    };
                     prev.spent += Number(o.totalAmount) || 0;
                     prev.count += 1;
                     map.set(key, prev);
@@ -1284,8 +1307,8 @@ export default function SellerDashboardPage() {
                       className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between"
                     >
                       <div>
-                        <p className="font-extrabold text-white font-mono text-[11px]">{id}</p>
-                        <p className="text-[10px] text-slate-500">Buyer ID</p>
+                        <p className="font-extrabold text-white text-[11px]">{c.name}</p>
+                        <p className="text-[10px] text-indigo-300 font-mono">{c.email || id}</p>
                       </div>
                       <div className="text-right">
                         <span className="font-black text-emerald-400 block">${money(c.spent)} spent</span>
@@ -1944,7 +1967,12 @@ export default function SellerDashboardPage() {
               <div className="grid grid-cols-2 gap-4 text-[10px]">
                 <div>
                   <span className="font-bold text-slate-500 uppercase block mb-1">Ship to</span>
-                  <p className="font-extrabold">{selectedOrder.userId}</p>
+                  <p className="font-extrabold">
+                    {selectedOrder.userName || selectedOrder.userEmail || '—'}
+                  </p>
+                  {selectedOrder.userEmail && (
+                    <p className="text-slate-600">{selectedOrder.userEmail}</p>
+                  )}
                   <p>
                     {[
                       selectedOrder.shippingAddressLine1,

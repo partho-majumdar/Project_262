@@ -25,7 +25,6 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -57,7 +56,6 @@ public class OrderServiceImpl implements OrderService {
             throw new ApiException("Shopping cart is empty. Add products before checking out.", HttpStatus.BAD_REQUEST);
         }
 
-        // Determine shipping address
         String addressLine1 = request.getShippingAddressLine1();
         String addressLine2 = request.getShippingAddressLine2();
         String city = request.getShippingCity();
@@ -80,24 +78,24 @@ public class OrderServiceImpl implements OrderService {
             throw new ApiException("Valid shipping address is required to place order", HttpStatus.BAD_REQUEST);
         }
 
-        // Calculate Subtotal & Verify Stock
         BigDecimal subtotal = BigDecimal.ZERO;
         for (CartItem item : cart.getItems()) {
             BigDecimal lineSubtotal = item.getUnitPrice().multiply(new BigDecimal(item.getQuantity()));
             subtotal = subtotal.add(lineSubtotal);
 
             if (item.getProduct().getStockQuantity() < item.getQuantity()) {
-                throw new ApiException("Insufficient inventory for '" + item.getProduct().getName() + "'. Available: " + item.getProduct().getStockQuantity(), HttpStatus.BAD_REQUEST);
+                throw new ApiException(
+                        "Insufficient inventory for '" + item.getProduct().getName() + "'. Available: "
+                                + item.getProduct().getStockQuantity(),
+                        HttpStatus.BAD_REQUEST);
             }
         }
 
-        // Apply Promo Coupon if provided
         BigDecimal discountAmount = BigDecimal.ZERO;
         String couponCode = null;
         if (request.getCouponCode() != null && !request.getCouponCode().trim().isEmpty()) {
             CouponValidationResponse couponResponse = couponService.validateAndCalculateCoupon(
-                    ApplyCouponRequest.builder().code(request.getCouponCode()).subtotal(subtotal).build()
-            );
+                    ApplyCouponRequest.builder().code(request.getCouponCode()).subtotal(subtotal).build());
 
             if (couponResponse.isValid()) {
                 discountAmount = couponResponse.getCalculatedDiscount();
@@ -106,10 +104,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // Calculate Tax & Shipping
-        BigDecimal discountedSubtotal = Math.max(0, subtotal.subtract(discountAmount).doubleValue()) > 0
-                ? subtotal.subtract(discountAmount) : BigDecimal.ZERO;
-
+        BigDecimal discountedSubtotal = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
         BigDecimal taxAmount = discountedSubtotal.multiply(TAX_RATE).setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal shippingAmount = new BigDecimal("15.00");
@@ -118,19 +113,20 @@ public class OrderServiceImpl implements OrderService {
         } else if ("OVERNIGHT_COURIER".equalsIgnoreCase(request.getShippingOptionId())) {
             shippingAmount = new BigDecimal("49.99");
         } else if (discountedSubtotal.compareTo(new BigDecimal("100.00")) >= 0) {
-            shippingAmount = BigDecimal.ZERO; // Free Standard Shipping
+            shippingAmount = BigDecimal.ZERO;
         }
 
         BigDecimal totalAmount = discountedSubtotal.add(taxAmount).add(shippingAmount);
-
-        // Generate Order Number (e.g., ORD-20260726-8849)
         String orderNumber = generateOrderNumber();
 
+        // NEW ORDERS START AS PENDING so seller can Accept
         Order order = Order.builder()
                 .orderNumber(orderNumber)
                 .user(user)
-                .status(OrderStatus.PROCESSING)
-                .paymentStatus(request.getPaymentMethod() == PaymentMethod.CASH_ON_DELIVERY ? PaymentStatus.PENDING : PaymentStatus.COMPLETED)
+                .status(OrderStatus.PENDING)
+                .paymentStatus(request.getPaymentMethod() == PaymentMethod.CASH_ON_DELIVERY
+                        ? PaymentStatus.PENDING
+                        : PaymentStatus.COMPLETED)
                 .paymentMethod(request.getPaymentMethod())
                 .subtotalAmount(subtotal)
                 .taxAmount(taxAmount)
@@ -149,7 +145,6 @@ public class OrderServiceImpl implements OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        // Process Order Items & Atomic Inventory Reserve
         for (CartItem cartItem : cart.getItems()) {
             BigDecimal lineSubtotal = cartItem.getUnitPrice().multiply(new BigDecimal(cartItem.getQuantity()));
 
@@ -167,13 +162,13 @@ public class OrderServiceImpl implements OrderService {
             savedOrder.getItems().add(orderItem);
             orderItemRepository.save(orderItem);
 
-            // Reserve/Deduct Stock in Warehouse Inventory Engine
-            inventoryService.reserveStockForOrder(cartItem.getProduct().getId(), cartItem.getQuantity(), orderNumber);
+            inventoryService.reserveStockForOrder(
+                    cartItem.getProduct().getId(),
+                    cartItem.getQuantity(),
+                    orderNumber);
         }
 
-        // Clear user cart
         cartService.clearCart(userEmail, sessionId);
-
         return mapToOrderDto(savedOrder);
     }
 
@@ -218,7 +213,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.DELIVERED) {
-            throw new ApiException("Order cannot be cancelled because it has already been shipped or delivered", HttpStatus.BAD_REQUEST);
+            throw new ApiException(
+                    "Order cannot be cancelled because it has already been shipped or delivered",
+                    HttpStatus.BAD_REQUEST);
         }
 
         order.setStatus(OrderStatus.CANCELLED);
@@ -226,9 +223,11 @@ public class OrderServiceImpl implements OrderService {
             order.setPaymentStatus(PaymentStatus.REFUNDED);
         }
 
-        // Revert inventory stock
         for (OrderItem item : order.getItems()) {
-            inventoryService.releaseStockForCancelledOrder(item.getProduct().getId(), item.getQuantity(), orderNumber);
+            inventoryService.releaseStockForCancelledOrder(
+                    item.getProduct().getId(),
+                    item.getQuantity(),
+                    orderNumber);
         }
 
         Order updated = orderRepository.save(order);
@@ -244,7 +243,8 @@ public class OrderServiceImpl implements OrderService {
         SellerStore store = sellerStoreRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
 
-        List<OrderItem> merchantItems = orderItemRepository.findBySellerStoreIdOrderByCreatedAtDesc(store.getId());
+        List<OrderItem> merchantItems =
+                orderItemRepository.findBySellerStoreIdOrderByCreatedAtDesc(store.getId());
 
         List<Order> merchantOrders = merchantItems.stream()
                 .map(OrderItem::getOrder)
@@ -257,12 +257,59 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderDto updateOrderStatus(String userEmail, String orderNumber, UpdateOrderStatusRequest request) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
         Order order = orderRepository.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Order", "orderNumber", orderNumber));
 
-        order.setStatus(request.getStatus());
-        if (request.getStatus() == OrderStatus.DELIVERED) {
+        // Seller can only update orders that contain their products
+        if (user.getRole() != Role.ROLE_ADMIN) {
+            SellerStore store = sellerStoreRepository.findByUserId(user.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
+
+            boolean ownsItem = order.getItems().stream()
+                    .anyMatch(item -> item.getSellerStore() != null
+                            && item.getSellerStore().getId().equals(store.getId()));
+
+            if (!ownsItem) {
+                throw new ApiException("Not authorized to update this order", HttpStatus.FORBIDDEN);
+            }
+        }
+
+        OrderStatus current = order.getStatus();
+        OrderStatus next = request.getStatus();
+
+        boolean valid =
+                (current == OrderStatus.PENDING
+                        && (next == OrderStatus.PROCESSING || next == OrderStatus.CANCELLED))
+                || (current == OrderStatus.PROCESSING
+                        && (next == OrderStatus.SHIPPED || next == OrderStatus.CANCELLED))
+                || (current == OrderStatus.SHIPPED && next == OrderStatus.DELIVERED);
+
+        if (!valid) {
+            throw new ApiException(
+                    "Invalid status change: " + current + " → " + next,
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        order.setStatus(next);
+
+        if (next == OrderStatus.DELIVERED) {
             order.setPaymentStatus(PaymentStatus.COMPLETED);
+        }
+
+        // Cancel from seller side → restore stock
+        if (next == OrderStatus.CANCELLED) {
+            if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
+                order.setPaymentStatus(PaymentStatus.REFUNDED);
+            }
+            for (OrderItem item : order.getItems()) {
+                inventoryService.releaseStockForCancelledOrder(
+                        item.getProduct().getId(),
+                        item.getQuantity(),
+                        orderNumber);
+            }
         }
 
         Order updated = orderRepository.save(order);
@@ -278,7 +325,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private String generateOrderNumber() {
-        String datePrefix = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String datePrefix = LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
         String randomDigits = String.format("%04d", (int) (Math.random() * 10000));
         String orderNumber = "ORD-" + datePrefix + "-" + randomDigits;
 
@@ -291,8 +339,10 @@ public class OrderServiceImpl implements OrderService {
 
     private OrderDto mapToOrderDto(Order order) {
         List<OrderItemDto> itemDtos = order.getItems().stream().map(item -> {
-            String imgUrl = (item.getProduct().getImageUrls() != null && !item.getProduct().getImageUrls().isEmpty())
-                    ? item.getProduct().getImageUrls().get(0) : null;
+            String imgUrl = (item.getProduct().getImageUrls() != null
+                    && !item.getProduct().getImageUrls().isEmpty())
+                    ? item.getProduct().getImageUrls().get(0)
+                    : null;
 
             return OrderItemDto.builder()
                     .id(item.getId())
@@ -304,15 +354,24 @@ public class OrderServiceImpl implements OrderService {
                     .quantity(item.getQuantity())
                     .unitPrice(item.getUnitPrice())
                     .subtotal(item.getSubtotal())
-                    .sellerStoreName(item.getSellerStore() != null ? item.getSellerStore().getStoreName() : "GroupMart Official Store")
+                    .sellerStoreName(item.getSellerStore() != null
+                            ? item.getSellerStore().getStoreName()
+                            : "GroupMart Official Store")
                     .build();
         }).collect(Collectors.toList());
+
+        String firstName = order.getUser().getFirstName() != null ? order.getUser().getFirstName() : "";
+        String lastName = order.getUser().getLastName() != null ? order.getUser().getLastName() : "";
+        String fullName = (firstName + " " + lastName).trim();
+        if (fullName.isEmpty()) {
+            fullName = order.getUser().getEmail();
+        }
 
         return OrderDto.builder()
                 .id(order.getId())
                 .orderNumber(order.getOrderNumber())
                 .userEmail(order.getUser().getEmail())
-                .userName(order.getUser().getFirstName() + " " + order.getUser().getLastName())
+                .userName(fullName)
                 .items(itemDtos)
                 .status(order.getStatus())
                 .paymentStatus(order.getPaymentStatus())
