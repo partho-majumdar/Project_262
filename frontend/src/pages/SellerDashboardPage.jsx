@@ -209,6 +209,37 @@ export default function SellerDashboardPage() {
       setInventoryList(invList);
       setOrders(orderList);
 
+      // ---------- Load reviews for all seller products (Customer Relations) ----------
+      let allReviews = [];
+      if (productList.length > 0) {
+        const reviewResults = await Promise.allSettled(
+          productList.map((p) => axiosClient.get(`/reviews/product/${p.id}`))
+        );
+
+        allReviews = reviewResults.flatMap((r, idx) => {
+          if (r.status !== 'fulfilled') return [];
+          const list = unwrapList(r.value);
+          const product = productList[idx];
+          return list.map((rev) => ({
+            id: rev.id,
+            customerName: rev.userName || 'Customer',
+            productName: product?.name || 'Product',
+            productId: product?.id,
+            rating: rev.rating,
+            comment: rev.comment || rev.title || '',
+            title: rev.title,
+            verifiedPurchase: rev.verifiedPurchase,
+            createdAt: rev.createdAt,
+            reply: null, // no backend reply support yet
+          }));
+        });
+
+        // newest first
+        allReviews.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      }
+      setReviews(allReviews);
+      // -------------------------------------------------------------------------------
+
       const liveProductCount = productList.length;
       const liveOrderCount = orderList.length;
       const liveRevenue = orderList.reduce((sum, o) => {
@@ -596,7 +627,7 @@ export default function SellerDashboardPage() {
     alert('Coupon saved locally only. Backend seller-coupon API is not available yet.');
   };
 
-  // Reviews
+  // Reviews (local reply only — backend has no seller reply endpoint yet)
   const handleReplyReviewSubmit = (reviewId) => {
     const text = reviewReplyText[reviewId];
     if (!text) return;
@@ -604,7 +635,7 @@ export default function SellerDashboardPage() {
       prev.map((r) => (r.id === reviewId ? { ...r, reply: text } : r))
     );
     setReviewReplyText((prev) => ({ ...prev, [reviewId]: '' }));
-    alert('Reply saved locally. Seller review API is not available yet.');
+    alert('Reply saved locally. Seller review reply API is not available yet.');
   };
 
   // Payout
@@ -1275,7 +1306,7 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* CUSTOMERS */}
+        {/* CUSTOMERS — now fully dynamic for list + reviews */}
         {activeSubTab === 'customers' && (
           <div className="space-y-6">
             <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
@@ -1323,24 +1354,43 @@ export default function SellerDashboardPage() {
             </div>
 
             <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Reviews</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
+                  Product Reviews ({reviews.length})
+                </h3>
+                <button
+                  onClick={loadData}
+                  className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                </button>
+              </div>
+
               {reviews.length === 0 ? (
                 <p className="text-xs text-slate-500">
-                  No seller reviews API is available yet. When backend exposes{' '}
-                  <code className="text-indigo-400">/seller/reviews</code>, this section will load dynamically.
+                  No reviews yet on your products. Reviews appear here once customers leave them.
                 </p>
               ) : (
                 <div className="space-y-4">
                   {reviews.map((rev) => (
-                    <div key={rev.id} className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-3 text-xs">
+                    <div
+                      key={rev.id}
+                      className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-3 text-xs"
+                    >
                       <div className="flex justify-between items-center">
                         <div>
                           <span className="font-extrabold text-white block">{rev.customerName}</span>
-                          <span className="text-[10px] text-indigo-400 font-mono">Product: {rev.productName}</span>
+                          <span className="text-[10px] text-indigo-400 font-mono">
+                            Product: {rev.productName}
+                          </span>
                         </div>
                         <span className="text-amber-400 font-black text-sm">★ {rev.rating}.0 / 5.0</span>
                       </div>
+                      {rev.title && (
+                        <p className="font-semibold text-slate-200">{rev.title}</p>
+                      )}
                       <p className="text-slate-300 italic">&quot;{rev.comment}&quot;</p>
+
                       {rev.reply ? (
                         <div className="p-3 bg-indigo-950/40 border border-indigo-900 rounded-xl">
                           <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest block mb-0.5">
@@ -1352,7 +1402,7 @@ export default function SellerDashboardPage() {
                         <div className="flex items-center gap-2 pt-1">
                           <input
                             type="text"
-                            placeholder="Reply..."
+                            placeholder="Reply (saved locally only)..."
                             value={reviewReplyText[rev.id] || ''}
                             onChange={(e) =>
                               setReviewReplyText({ ...reviewReplyText, [rev.id]: e.target.value })

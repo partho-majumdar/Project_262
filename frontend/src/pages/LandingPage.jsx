@@ -180,7 +180,7 @@ export default function LandingPage() {
       
 
 
-      {/* 2. FULL-SCREEN ENTERPRISE HERO SECTION: NEXUSCOMMERCE X */}
+      {/* 2. FULL-SCREEN ENTERPRISE HERO SECTION: GROUPMART X */}
       <section className="min-h-[85vh] max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center pt-4">
         <div className="w-full glass-panel p-8 sm:p-16 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 via-indigo-950/60 to-purple-950/40 relative overflow-hidden space-y-8 flex flex-col justify-center">
           
@@ -504,7 +504,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 8. WHY CHOOSE NEXUSCOMMERCE X */}
+      {/* 8. WHY CHOOSE GROUPMART X */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-extrabold text-white">Why Choose GroupMart X</h2>

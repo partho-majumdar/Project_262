@@ -31,7 +31,7 @@ public class AiBiAnalyticsController {
     public ResponseEntity<String> exportCsvReport() {
         String csvContent = aiBiAnalyticsService.generateCsvReport();
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"nexuscommerce-bi-report.csv\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"groupmart-bi-report.csv\"")
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .body(csvContent);
     }
