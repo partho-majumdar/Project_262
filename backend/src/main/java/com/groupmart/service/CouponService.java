@@ -12,13 +12,16 @@ public interface CouponService {
 
     CouponValidationResponse validateAndCalculateCoupon(ApplyCouponRequest request);
 
+    
     List<CouponDto> getActivePublicCoupons();
-
+    
     List<CouponDto> getAllCoupons();
-
+    
     CouponDto createCoupon(String adminEmail, CreateCouponRequest request);
-
+    
     CouponDto toggleCouponStatus(String adminEmail, UUID couponId, boolean active);
-
+    
     void incrementCouponUsage(String code);
+
+    List<CouponDto> getCouponsBySeller(String sellerEmail);
 }

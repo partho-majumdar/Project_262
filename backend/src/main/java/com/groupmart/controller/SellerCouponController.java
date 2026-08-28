@@ -26,16 +26,16 @@ public class SellerCouponController {
     private final CouponService couponService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<CouponDto>>> getCoupons() {
-        List<CouponDto> coupons = couponService.getAllCoupons();
-        return ResponseEntity.ok(ApiResponse.success("Coupons retrieved", coupons));
+    public ResponseEntity<ApiResponse<List<CouponDto>>> getCoupons(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        List<CouponDto> coupons = couponService.getCouponsBySeller(userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Seller coupons retrieved", coupons));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<CouponDto>> createCoupon(
             @AuthenticationPrincipal UserDetails userDetails,
-            @Valid @RequestBody CreateCouponRequest request
-    ) {
+            @Valid @RequestBody CreateCouponRequest request) {
         CouponDto created = couponService.createCoupon(userDetails.getUsername(), request);
         return new ResponseEntity<>(
                 ApiResponse.success("Coupon created successfully", created, HttpStatus.CREATED.value()),
@@ -47,10 +47,8 @@ public class SellerCouponController {
     public ResponseEntity<ApiResponse<CouponDto>> toggleStatus(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable UUID id,
-            @RequestParam boolean active
-    ) {
+            @RequestParam boolean active) {
         CouponDto updated = couponService.toggleCouponStatus(userDetails.getUsername(), id, active);
         return ResponseEntity.ok(ApiResponse.success("Coupon status updated", updated));
     }
 }
-

@@ -21,6 +21,10 @@ public class Coupon {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "seller_store_id")
+    private SellerStore sellerStore;   // null = platform-wide coupon
+
     @Column(nullable = false, unique = true)
     private String code;
 

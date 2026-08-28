@@ -24,6 +24,10 @@ public class SellerStoreDto {
     private String logoUrl;
     private String bannerUrl;
     private String taxId;
+    private String bankAccount;
+    private String bankName;
+    private String shippingPolicy;
+    private String returnPolicy;
     private boolean verified;
     private double rating;
     private int totalSales;

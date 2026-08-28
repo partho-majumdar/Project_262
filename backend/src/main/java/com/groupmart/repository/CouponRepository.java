@@ -19,4 +19,8 @@ public interface CouponRepository extends JpaRepository<Coupon, UUID> {
     boolean existsByCodeIgnoreCase(String code);
 
     List<Coupon> findByActiveTrue();
+
+    List<Coupon> findBySellerStoreIdOrderByCreatedAtDesc(UUID sellerStoreId);
+
+    List<Coupon> findBySellerStoreIsNull();
 }

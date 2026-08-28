@@ -49,6 +49,12 @@ public class Review {
     @Builder.Default
     private int helpfulVotes = 0;
 
+    @Column(name = "seller_reply", length = 2000)
+    private String sellerReply;
+
+    @Column(name = "seller_replied_at")
+    private LocalDateTime sellerRepliedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

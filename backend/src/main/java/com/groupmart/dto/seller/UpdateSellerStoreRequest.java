@@ -22,4 +22,13 @@ public class UpdateSellerStoreRequest {
     private String bannerUrl;
 
     private String taxId;
+
+    private String bankAccount;
+
+    private String bankName;
+
+    private String shippingPolicy;
+
+    private String returnPolicy;
 }
+

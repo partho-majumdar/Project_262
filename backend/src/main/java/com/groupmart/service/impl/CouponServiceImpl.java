@@ -13,7 +13,11 @@ import com.groupmart.dto.coupon.CouponValidationResponse;
 import com.groupmart.dto.coupon.CreateCouponRequest;
 import com.groupmart.entity.Coupon;
 import com.groupmart.entity.DiscountType;
+import com.groupmart.entity.SellerStore;
+import com.groupmart.entity.User;
 import com.groupmart.repository.CouponRepository;
+import com.groupmart.repository.SellerStoreRepository;
+import com.groupmart.repository.UserRepository;
 import com.groupmart.service.CouponService;
 
 import java.math.BigDecimal;
@@ -29,6 +33,8 @@ import java.util.stream.Collectors;
 public class CouponServiceImpl implements CouponService {
 
     private final CouponRepository couponRepository;
+    private final UserRepository userRepository;
+    private final SellerStoreRepository sellerStoreRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -81,23 +87,26 @@ public class CouponServiceImpl implements CouponService {
                     .valid(false)
                     .code(code)
                     .calculatedDiscount(BigDecimal.ZERO)
-                    .message(String.format("Coupon '%s' requires a minimum order subtotal of $%.2f", code, coupon.getMinOrderAmount()))
+                    .message(String.format(
+                            "Coupon '%s' requires a minimum order subtotal of $%.2f",
+                            code, coupon.getMinOrderAmount()))
                     .build();
         }
 
-        // Calculate discount deduction amount
         BigDecimal calculatedDiscount = BigDecimal.ZERO;
         if (coupon.getDiscountType() == DiscountType.PERCENTAGE) {
-            BigDecimal percentageDecimal = coupon.getDiscountValue().divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+            BigDecimal percentageDecimal = coupon.getDiscountValue()
+                    .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
             calculatedDiscount = subtotal.multiply(percentageDecimal).setScale(2, RoundingMode.HALF_UP);
 
-            if (coupon.getMaxDiscountAmount() != null && calculatedDiscount.compareTo(coupon.getMaxDiscountAmount()) > 0) {
+            if (coupon.getMaxDiscountAmount() != null
+                    && calculatedDiscount.compareTo(coupon.getMaxDiscountAmount()) > 0) {
                 calculatedDiscount = coupon.getMaxDiscountAmount();
             }
         } else if (coupon.getDiscountType() == DiscountType.FIXED_AMOUNT) {
             calculatedDiscount = coupon.getDiscountValue();
             if (calculatedDiscount.compareTo(subtotal) > 0) {
-                calculatedDiscount = subtotal; // Cap at subtotal
+                calculatedDiscount = subtotal;
             }
         }
 
@@ -129,13 +138,34 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<CouponDto> getCouponsBySeller(String sellerEmail) {
+        User user = userRepository.findByEmail(sellerEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", sellerEmail));
+
+        SellerStore store = sellerStoreRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
+
+        return couponRepository.findBySellerStoreIdOrderByCreatedAtDesc(store.getId())
+                .stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     @Transactional
-    public CouponDto createCoupon(String adminEmail, CreateCouponRequest request) {
+    public CouponDto createCoupon(String sellerEmail, CreateCouponRequest request) {
         String cleanCode = request.getCode().trim().toUpperCase();
 
         if (couponRepository.existsByCodeIgnoreCase(cleanCode)) {
             throw new ApiException("Coupon code '" + cleanCode + "' already exists", HttpStatus.CONFLICT);
         }
+
+        User user = userRepository.findByEmail(sellerEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", sellerEmail));
+
+        SellerStore store = sellerStoreRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
 
         Coupon coupon = Coupon.builder()
                 .code(cleanCode)
@@ -147,6 +177,7 @@ public class CouponServiceImpl implements CouponService {
                 .timesUsed(0)
                 .expiryDate(request.getExpiryDate())
                 .active(true)
+                .sellerStore(store)
                 .build();
 
         Coupon saved = couponRepository.save(coupon);
@@ -155,9 +186,19 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     @Transactional
-    public CouponDto toggleCouponStatus(String adminEmail, UUID couponId, boolean active) {
+    public CouponDto toggleCouponStatus(String sellerEmail, UUID couponId, boolean active) {
+        User user = userRepository.findByEmail(sellerEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", sellerEmail));
+
+        SellerStore store = sellerStoreRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
+
         Coupon coupon = couponRepository.findById(couponId)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon", "id", couponId));
+
+        if (coupon.getSellerStore() == null || !coupon.getSellerStore().getId().equals(store.getId())) {
+            throw new ApiException("You can only update your own coupons", HttpStatus.FORBIDDEN);
+        }
 
         coupon.setActive(active);
         Coupon updated = couponRepository.save(coupon);

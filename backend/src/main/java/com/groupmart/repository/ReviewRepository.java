@@ -26,4 +26,8 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     Double getAverageRatingByProductId(@Param("productId") UUID productId);
 
     int countByProductIdAndRating(UUID productId, int rating);
+
+    @Query("SELECT r FROM Review r WHERE r.product.sellerStore.id = :storeId ORDER BY r.createdAt DESC")
+    List<Review> findBySellerStoreId(@Param("storeId") UUID storeId);
 }
+

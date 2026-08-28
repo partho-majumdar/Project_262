@@ -24,5 +24,7 @@ public class ReviewDto {
     private String comment;
     private boolean verifiedPurchase;
     private int helpfulVotes;
+    private String sellerReply;
+    private LocalDateTime sellerRepliedAt;
     private LocalDateTime createdAt;
 }

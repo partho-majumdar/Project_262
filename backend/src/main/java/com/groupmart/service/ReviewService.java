@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.groupmart.dto.review.CreateReviewRequest;
 import com.groupmart.dto.review.ProductReviewSummaryDto;
 import com.groupmart.dto.review.ReviewDto;
+import com.groupmart.dto.review.SellerReplyRequest;
 
 public interface ReviewService {
 
@@ -18,4 +19,8 @@ public interface ReviewService {
     void deleteReview(String userEmail, UUID reviewId);
 
     ReviewDto voteHelpful(UUID reviewId);
+
+    List<ReviewDto> getSellerProductReviews(String sellerEmail);
+
+    ReviewDto replyToReview(String sellerEmail, UUID reviewId, SellerReplyRequest request);
 }

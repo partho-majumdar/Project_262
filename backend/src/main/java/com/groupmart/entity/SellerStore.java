@@ -63,4 +63,16 @@ public class SellerStore {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "bank_account", length = 100)
+    private String bankAccount;
+
+    @Column(name = "bank_name", length = 150)
+    private String bankName;
+
+    @Column(name = "shipping_policy", length = 2000)
+    private String shippingPolicy;
+
+    @Column(name = "return_policy", length = 2000)
+    private String returnPolicy;
 }

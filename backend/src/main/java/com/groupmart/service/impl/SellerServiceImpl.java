@@ -117,6 +117,11 @@ public class SellerServiceImpl implements SellerService {
         if (request.getBannerUrl() != null) store.setBannerUrl(request.getBannerUrl());
         if (request.getTaxId() != null) store.setTaxId(request.getTaxId());
 
+        if (request.getBankAccount() != null) store.setBankAccount(request.getBankAccount());
+        if (request.getBankName() != null) store.setBankName(request.getBankName());
+        if (request.getShippingPolicy() != null) store.setShippingPolicy(request.getShippingPolicy());
+        if (request.getReturnPolicy() != null) store.setReturnPolicy(request.getReturnPolicy());
+
         SellerStore updated = sellerStoreRepository.save(store);
         return mapToDto(updated);
     }
@@ -224,6 +229,10 @@ public class SellerServiceImpl implements SellerService {
                 .logoUrl(store.getLogoUrl())
                 .bannerUrl(store.getBannerUrl())
                 .taxId(store.getTaxId())
+                .bankAccount(store.getBankAccount())
+                .bankName(store.getBankName())
+                .shippingPolicy(store.getShippingPolicy())
+                .returnPolicy(store.getReturnPolicy())
                 .verified(store.isVerified())
                 .rating(store.getRating())
                 .totalSales(store.getTotalSales())

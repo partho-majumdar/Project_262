@@ -67,27 +67,22 @@ export default function SellerDashboardPage() {
   });
   const [createStoreError, setCreateStoreError] = useState('');
 
-  // Product modal
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentProduct, setCurrentProduct] = useState(emptyProductForm);
 
-  // Bulk CSV
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [csvContent, setCsvContent] = useState('');
   const [bulkStatus, setBulkStatus] = useState('');
 
-  // Invoice
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // Restock
   const [isRestockOpen, setIsRestockOpen] = useState(false);
   const [selectedInventoryItem, setSelectedInventoryItem] = useState(null);
   const [restockQty, setRestockQty] = useState(10);
   const [restockReason, setRestockReason] = useState('RESTOCK');
 
-  // AI helper
   const [aiProductKeywords, setAiProductKeywords] = useState('');
   const [aiGeneratedTitle, setAiGeneratedTitle] = useState('');
   const [aiGeneratedDesc, setAiGeneratedDesc] = useState('');
@@ -95,7 +90,6 @@ export default function SellerDashboardPage() {
   const [aiPriceRecommendation, setAiPriceRecommendation] = useState(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
-  // Coupons
   const [coupons, setCoupons] = useState([]);
   const [newCoupon, setNewCoupon] = useState({
     code: '',
@@ -104,7 +98,6 @@ export default function SellerDashboardPage() {
     minOrderAmount: 0,
   });
 
-  // Store profile
   const [storeProfile, setStoreProfile] = useState({
     storeName: '',
     description: '',
@@ -117,15 +110,13 @@ export default function SellerDashboardPage() {
     returnPolicy: '',
   });
 
-  // Finance
   const [payoutAmount, setPayoutAmount] = useState('');
   const [payouts, setPayouts] = useState([]);
+  const [wallet, setWallet] = useState(null);
 
-  // Filters
   const [productSearch, setProductSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
 
-  // Reviews
   const [reviews, setReviews] = useState([]);
   const [reviewReplyText, setReviewReplyText] = useState({});
 
@@ -136,6 +127,13 @@ export default function SellerDashboardPage() {
       msg.includes('seller store not found') ||
       msg.includes('store not found')
     );
+  };
+
+  const unwrapList = (res) => {
+    if (!res) return [];
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res.data)) return res.data;
+    return [];
   };
 
   const loadData = async () => {
@@ -168,6 +166,10 @@ export default function SellerDashboardPage() {
         logoUrl: storeObj.logoUrl || '',
         bannerUrl: storeObj.bannerUrl || '',
         gstin: storeObj.taxId || prev.gstin || '',
+        bankAccount: storeObj.bankAccount || '',
+        bankName: storeObj.bankName || '',
+        shippingPolicy: storeObj.shippingPolicy || '',
+        returnPolicy: storeObj.returnPolicy || '',
       }));
     }
 
@@ -180,6 +182,8 @@ export default function SellerDashboardPage() {
         axiosClient.get('/seller/inventory'),
         axiosClient.get('/seller/orders'),
         axiosClient.get('/seller/coupons'),
+        axiosClient.get('/seller/wallet'),
+        axiosClient.get('/seller/reviews'),
       ]);
 
       const val = (i) => (results[i].status === 'fulfilled' ? results[i].value : null);
@@ -191,16 +195,11 @@ export default function SellerDashboardPage() {
       const invRes = val(4);
       const orderRes = val(5);
       const couponRes = val(6);
+      const walletRes = val(7);
+      const reviewRes = val(8);
 
       const overview = dashRes?.data ?? dashRes ?? null;
       const analyticsObj = anaRes?.data ?? anaRes ?? null;
-
-      const unwrapList = (res) => {
-        if (!res) return [];
-        if (Array.isArray(res)) return res;
-        if (Array.isArray(res.data)) return res.data;
-        return [];
-      };
 
       const productList = unwrapList(prodRes);
       const invList = unwrapList(invRes);
@@ -211,7 +210,6 @@ export default function SellerDashboardPage() {
       setInventoryList(invList);
       setOrders(orderList);
 
-      // Coupons (Marketing)
       const couponList = unwrapList(couponRes);
       setCoupons(
         couponList.map((c) => ({
@@ -229,35 +227,34 @@ export default function SellerDashboardPage() {
         }))
       );
 
-      // ---------- Load reviews for all seller products (Customer Relations) ----------
-      let allReviews = [];
-      if (productList.length > 0) {
-        const reviewResults = await Promise.allSettled(
-          productList.map((p) => axiosClient.get(`/reviews/product/${p.id}`))
-        );
+      const walletData = walletRes?.data ?? walletRes ?? null;
+      setWallet(walletData);
+      setPayouts(
+        (walletData?.recentTransactions ?? [])
+          .filter((t) => t.type === 'PAYOUT_REQUEST' || t.type === 'PAYOUT_COMPLETED')
+          .map((t) => ({
+            id: t.id,
+            amount: t.amount,
+            status: t.status,
+          }))
+      );
 
-        allReviews = reviewResults.flatMap((r, idx) => {
-          if (r.status !== 'fulfilled') return [];
-          const list = unwrapList(r.value);
-          const product = productList[idx];
-          return list.map((rev) => ({
-            id: rev.id,
-            customerName: rev.userName || 'Customer',
-            productName: product?.name || 'Product',
-            productId: product?.id,
-            rating: rev.rating,
-            comment: rev.comment || rev.title || '',
-            title: rev.title,
-            verifiedPurchase: rev.verifiedPurchase,
-            createdAt: rev.createdAt,
-            reply: null,
-          }));
-        });
-
-        allReviews.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-      }
-      setReviews(allReviews);
-      // -------------------------------------------------------------------------------
+      const reviewList = unwrapList(reviewRes);
+      const mappedReviews = reviewList.map((rev) => ({
+        id: rev.id,
+        customerName: rev.userName || 'Customer',
+        productName: rev.productName || 'Product',
+        productId: rev.productId,
+        rating: rev.rating,
+        comment: rev.comment || rev.title || '',
+        title: rev.title,
+        verifiedPurchase: rev.verifiedPurchase,
+        createdAt: rev.createdAt,
+        reply: rev.sellerReply || null,
+        sellerReply: rev.sellerReply || null,
+      }));
+      mappedReviews.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      setReviews(mappedReviews);
 
       const liveProductCount = productList.length;
       const liveOrderCount = orderList.length;
@@ -276,25 +273,14 @@ export default function SellerDashboardPage() {
           ? rated.reduce((s, p) => s + Number(p.rating || 0), 0) / rated.length
           : Number(storeObj?.rating ?? 0);
 
-      const backendLooksDemo =
-        Number(overview?.totalRevenue) === 12450 ||
-        Number(overview?.totalOrders) === 48 ||
-        Number(overview?.totalProducts) === 12;
-
       setAnalytics({
         ...analyticsObj,
-        totalSalesRevenue: backendLooksDemo
-          ? liveRevenue
-          : Number(overview?.totalRevenue ?? analyticsObj?.totalSalesRevenue ?? liveRevenue),
-        completedOrdersCount: backendLooksDemo
-          ? liveOrderCount
-          : Number(overview?.totalOrders ?? liveOrderCount),
-        totalProducts: backendLooksDemo
-          ? liveProductCount
-          : Number(overview?.totalProducts ?? liveProductCount),
-        lowStockAlertCount: backendLooksDemo
-          ? liveLowStock
-          : Number(overview?.lowStockAlertCount ?? liveLowStock),
+        totalSalesRevenue: Number(
+          overview?.totalRevenue ?? analyticsObj?.totalSalesRevenue ?? liveRevenue
+        ),
+        completedOrdersCount: Number(overview?.totalOrders ?? liveOrderCount),
+        totalProducts: Number(overview?.totalProducts ?? liveProductCount),
+        lowStockAlertCount: Number(overview?.lowStockAlertCount ?? liveLowStock),
         averageRating: liveAvgRating,
       });
     } catch (err) {
@@ -368,7 +354,6 @@ export default function SellerDashboardPage() {
     return orders.filter((o) => o.status === orderStatusFilter);
   }, [orders, orderStatusFilter]);
 
-  // ---------- Product CRUD ----------
   const handleProductSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -456,7 +441,6 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // ===================== BULK CSV =====================
   const handleBulkCsvUpload = async (e) => {
     e.preventDefault();
     setBulkStatus('Uploading...');
@@ -478,9 +462,7 @@ export default function SellerDashboardPage() {
 
     try {
       const res = await axiosClient.post('/seller/products/bulk-import', formData, {
-        headers: {
-          'Content-Type': undefined,
-        },
+        headers: { 'Content-Type': undefined },
       });
 
       const payload = res?.data ?? res;
@@ -488,7 +470,7 @@ export default function SellerDashboardPage() {
       const failed = payload?.failedCount ?? 0;
       const errors = payload?.errors ?? [];
 
-      let msg = `✅ Successfully imported ${success} product(s).`;
+      let msg = `Successfully imported ${success} product(s).`;
       if (failed > 0) {
         msg += ` ${failed} failed.`;
         if (errors.length > 0) {
@@ -511,7 +493,6 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // Inventory
   const handleRestockSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -531,7 +512,6 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // Orders
   const handleOrderStatusUpdate = async (orderNumber, newStatus) => {
     try {
       await axiosClient.put(`/seller/orders/${orderNumber}/status`, {
@@ -544,7 +524,6 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // AI
   const handleAiCopywrite = async () => {
     if (!aiProductKeywords.trim()) {
       alert('Please enter product keywords or details first');
@@ -621,7 +600,6 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // Coupon — fully dynamic (API)
   const handleCreateCoupon = async (e) => {
     e.preventDefault();
     if (!newCoupon.code?.trim()) return;
@@ -658,24 +636,46 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // Reviews (local reply only — backend has no seller reply endpoint yet)
-  const handleReplyReviewSubmit = (reviewId) => {
+  const handleReplyReviewSubmit = async (reviewId) => {
     const text = reviewReplyText[reviewId];
-    if (!text) return;
-    setReviews((prev) =>
-      prev.map((r) => (r.id === reviewId ? { ...r, reply: text } : r))
-    );
-    setReviewReplyText((prev) => ({ ...prev, [reviewId]: '' }));
-    alert('Reply saved locally. Seller review reply API is not available yet.');
+    if (!text?.trim()) return;
+    try {
+      await axiosClient.post(`/seller/reviews/${reviewId}/reply`, {
+        reply: text.trim(),
+      });
+      setReviews((prev) =>
+        prev.map((r) =>
+          r.id === reviewId
+            ? { ...r, reply: text.trim(), sellerReply: text.trim() }
+            : r
+        )
+      );
+      setReviewReplyText((prev) => ({ ...prev, [reviewId]: '' }));
+      alert('Reply saved');
+    } catch (err) {
+      alert(err?.message || 'Failed to save reply');
+    }
   };
 
-  // Payout
-  const handleRequestPayout = (e) => {
+  const handleRequestPayout = async (e) => {
     e.preventDefault();
-    alert('Payout / wallet API is not implemented on the backend yet. This action is disabled.');
+    const amount = parseFloat(payoutAmount);
+    if (!amount || amount < 1) {
+      alert('Enter a valid amount (min $1)');
+      return;
+    }
+    try {
+      const res = await axiosClient.post('/seller/wallet/payout', { amount });
+      const data = res?.data ?? res;
+      setWallet(data);
+      setPayoutAmount('');
+      alert('Payout request submitted');
+      await loadData();
+    } catch (err) {
+      alert(err?.message || 'Payout failed');
+    }
   };
 
-  // Store settings
   const handleSaveStoreSettings = async () => {
     setSavingSettings(true);
     try {
@@ -685,9 +685,13 @@ export default function SellerDashboardPage() {
         logoUrl: storeProfile.logoUrl || null,
         bannerUrl: storeProfile.bannerUrl || null,
         taxId: storeProfile.gstin || null,
+        bankAccount: storeProfile.bankAccount || null,
+        bankName: storeProfile.bankName || null,
+        shippingPolicy: storeProfile.shippingPolicy || null,
+        returnPolicy: storeProfile.returnPolicy || null,
       });
       alert('Store profile updated successfully!');
-      loadData();
+      await loadData();
     } catch (err) {
       alert(err?.message || 'Failed to update store settings');
     } finally {
@@ -809,11 +813,6 @@ export default function SellerDashboardPage() {
               {creatingStore ? 'Creating store...' : 'Create seller store'}
             </button>
           </form>
-
-          <p className="text-[10px] text-slate-500 text-center pt-2 border-t border-slate-800">
-            Calls <code className="text-indigo-400">POST /api/v1/seller/store</code>.
-            You must be logged in as <code className="text-indigo-400">ROLE_SELLER</code>.
-          </p>
         </div>
       </div>
     );
@@ -821,7 +820,6 @@ export default function SellerDashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
-      {/* SIDEBAR */}
       <aside className="w-full lg:w-60 shrink-0 bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4">
         <div className="border-b border-slate-800 pb-3 mb-2">
           <h2 className="text-xs font-black uppercase text-indigo-400 tracking-widest">
@@ -869,7 +867,6 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* Banner */}
         <div className="glass-panel p-6 sm:p-7 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 bg-gradient-to-r from-slate-900 via-indigo-950/20 to-slate-950">
           <div className="space-y-1 text-center sm:text-left">
             <h1 className="text-2xl font-black text-white">
@@ -896,7 +893,6 @@ export default function SellerDashboardPage() {
           </div>
         </div>
 
-        {/* OVERVIEW */}
         {activeSubTab === 'overview' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -986,7 +982,6 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* PRODUCTS */}
         {activeSubTab === 'products' && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1121,7 +1116,6 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* INVENTORY */}
         {activeSubTab === 'inventory' && (
           <div className="space-y-6">
             <div className="p-4 bg-amber-950/40 border border-amber-800 text-amber-200 text-xs rounded-2xl flex items-center gap-2">
@@ -1192,7 +1186,6 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* ORDERS */}
         {activeSubTab === 'orders' && (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1248,12 +1241,8 @@ export default function SellerDashboardPage() {
                           </span>
                         </td>
                         <td className="p-4">
-                          <span className="font-semibold text-white block">
-                            {ord.userName || '—'}
-                          </span>
-                          <span className="text-[10px] text-indigo-300 font-mono block">
-                            {ord.userEmail || '—'}
-                          </span>
+                          <span className="font-semibold text-white block">{ord.userName || '—'}</span>
+                          <span className="text-[10px] text-indigo-300 font-mono block">{ord.userEmail || '—'}</span>
                         </td>
                         <td className="p-4 space-y-0.5">
                           <span className="block font-semibold text-slate-200">{ord.shippingMethod || '—'}</span>
@@ -1337,7 +1326,6 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* CUSTOMERS */}
         {activeSubTab === 'customers' && (
           <div className="space-y-6">
             <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
@@ -1417,23 +1405,21 @@ export default function SellerDashboardPage() {
                         </div>
                         <span className="text-amber-400 font-black text-sm">★ {rev.rating}.0 / 5.0</span>
                       </div>
-                      {rev.title && (
-                        <p className="font-semibold text-slate-200">{rev.title}</p>
-                      )}
+                      {rev.title && <p className="font-semibold text-slate-200">{rev.title}</p>}
                       <p className="text-slate-300 italic">&quot;{rev.comment}&quot;</p>
 
-                      {rev.reply ? (
+                      {rev.reply || rev.sellerReply ? (
                         <div className="p-3 bg-indigo-950/40 border border-indigo-900 rounded-xl">
                           <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest block mb-0.5">
                             Store reply
                           </span>
-                          <p className="text-slate-300">{rev.reply}</p>
+                          <p className="text-slate-300">{rev.reply || rev.sellerReply}</p>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 pt-1">
                           <input
                             type="text"
-                            placeholder="Reply (saved locally only)..."
+                            placeholder="Write a reply..."
                             value={reviewReplyText[rev.id] || ''}
                             onChange={(e) =>
                               setReviewReplyText({ ...reviewReplyText, [rev.id]: e.target.value })
@@ -1456,7 +1442,6 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* MARKETING — fully dynamic */}
         {activeSubTab === 'marketing' && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1581,28 +1566,26 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* FINANCE */}
         {activeSubTab === 'finance' && (
           <div className="space-y-6">
-            <p className="text-xs text-amber-300/90 bg-amber-950/30 border border-amber-900 rounded-xl px-3 py-2">
-              Wallet / payout APIs are not implemented. Figures below use live revenue from the dashboard API only.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
-                <span className="text-xs text-slate-400">Gross sales (API)</span>
-                <p className="text-2xl font-black text-emerald-400">${money(analytics?.totalSalesRevenue)}</p>
-              </div>
-              <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
-                <span className="text-xs text-slate-400">Est. after 15% platform fee</span>
-                <p className="text-2xl font-black text-white">
-                  ${money((Number(analytics?.totalSalesRevenue) || 0) * 0.85)}
+                <span className="text-xs text-slate-400">Gross sales</span>
+                <p className="text-2xl font-black text-emerald-400">
+                  ${money(wallet?.grossSales ?? analytics?.totalSalesRevenue)}
                 </p>
               </div>
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
-                <span className="text-xs text-slate-400">Orders</span>
-                <p className="text-2xl font-black text-indigo-300">
-                  {analytics?.completedOrdersCount ?? orders.length}
-                </p>
+                <span className="text-xs text-slate-400">Available balance</span>
+                <p className="text-2xl font-black text-white">${money(wallet?.availableBalance)}</p>
+              </div>
+              <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
+                <span className="text-xs text-slate-400">Pending payout</span>
+                <p className="text-2xl font-black text-amber-300">${money(wallet?.pendingBalance)}</p>
+              </div>
+              <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
+                <span className="text-xs text-slate-400">Total paid out</span>
+                <p className="text-2xl font-black text-indigo-300">${money(wallet?.totalPaidOut)}</p>
               </div>
             </div>
 
@@ -1615,6 +1598,7 @@ export default function SellerDashboardPage() {
                     <input
                       type="number"
                       step="0.01"
+                      min="1"
                       value={payoutAmount}
                       onChange={(e) => setPayoutAmount(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
@@ -1622,24 +1606,26 @@ export default function SellerDashboardPage() {
                   </div>
                   <button
                     type="submit"
-                    className="w-full py-2 bg-slate-700 text-slate-300 rounded-xl font-bold cursor-not-allowed"
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold"
                   >
-                    Payout API not available
+                    Request payout
                   </button>
                 </form>
               </div>
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Payout history</h3>
-                {payouts.length === 0 ? (
-                  <p className="text-xs text-slate-500">No payouts recorded.</p>
+                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Transaction history</h3>
+                {(wallet?.recentTransactions ?? []).length === 0 ? (
+                  <p className="text-xs text-slate-500">No transactions yet.</p>
                 ) : (
-                  payouts.map((p) => (
+                  (wallet?.recentTransactions ?? []).map((t) => (
                     <div
-                      key={p.id}
+                      key={t.id}
                       className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex justify-between text-xs font-mono"
                     >
-                      <span className="text-white font-bold">${money(p.amount)}</span>
-                      <span className="text-slate-400">{p.status}</span>
+                      <span className="text-white font-bold">
+                        ${money(t.amount)} · {t.type}
+                      </span>
+                      <span className="text-slate-400">{t.status}</span>
                     </div>
                   ))
                 )}
@@ -1648,7 +1634,6 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* AI HUB */}
         {activeSubTab === 'ai-hub' && (
           <div className="space-y-6">
             <div className="glass-panel p-5 rounded-3xl border border-amber-900/60 bg-amber-950/20 space-y-4">
@@ -1732,15 +1717,10 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* SETTINGS */}
         {activeSubTab === 'settings' && (
           <div className="space-y-6">
             <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4 text-xs">
               <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Store profile</h3>
-              <p className="text-slate-500">
-                Saved fields: storeName, description, logoUrl, bannerUrl, taxId (GSTIN). Bank / policy fields are
-                local-only until backend supports them.
-              </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -1779,6 +1759,42 @@ export default function SellerDashboardPage() {
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-300">Bank account</label>
+                  <input
+                    type="text"
+                    value={storeProfile.bankAccount}
+                    onChange={(e) => setStoreProfile({ ...storeProfile, bankAccount: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-300">Bank name</label>
+                  <input
+                    type="text"
+                    value={storeProfile.bankName}
+                    onChange={(e) => setStoreProfile({ ...storeProfile, bankName: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="font-semibold text-slate-300">Shipping policy</label>
+                  <textarea
+                    rows={2}
+                    value={storeProfile.shippingPolicy}
+                    onChange={(e) => setStoreProfile({ ...storeProfile, shippingPolicy: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="font-semibold text-slate-300">Return policy</label>
+                  <textarea
+                    rows={2}
+                    value={storeProfile.returnPolicy}
+                    onChange={(e) => setStoreProfile({ ...storeProfile, returnPolicy: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -1806,7 +1822,6 @@ export default function SellerDashboardPage() {
         )}
       </div>
 
-      {/* PRODUCT MODAL */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
           <div className="glass-panel w-full max-w-2xl p-6 rounded-3xl space-y-4 relative border border-slate-800 max-h-[90vh] overflow-y-auto my-8">
@@ -1968,7 +1983,6 @@ export default function SellerDashboardPage() {
         </div>
       )}
 
-      {/* BULK CSV MODAL */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="glass-panel w-full max-w-lg p-6 rounded-3xl space-y-4 relative border border-slate-800">
@@ -1998,11 +2012,6 @@ export default function SellerDashboardPage() {
                   <p className="font-semibold text-white">Expected CSV columns:</p>
                   <p className="font-mono text-[11px] break-all">
                     name,price,categorySlug,stockQuantity,description,compareAtPrice,imageUrls,featured
-                  </p>
-                  <p className="text-slate-400 mt-1">
-                    • <strong>categorySlug</strong> (or category / categoryId) is required<br />
-                    • imageUrls can be pipe-separated: url1|url2<br />
-                    • featured = true / false / 1 / 0
                   </p>
                 </div>
 
@@ -2052,7 +2061,6 @@ export default function SellerDashboardPage() {
         </div>
       )}
 
-      {/* INVOICE */}
       {isInvoiceModalOpen && selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
           <div className="glass-panel w-full max-w-2xl p-6 rounded-3xl space-y-6 relative border border-slate-800 max-h-[90vh] overflow-y-auto my-8">
@@ -2132,7 +2140,6 @@ export default function SellerDashboardPage() {
         </div>
       )}
 
-      {/* RESTOCK */}
       {isRestockOpen && selectedInventoryItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="glass-panel w-full max-w-md p-6 rounded-3xl space-y-4 relative border border-slate-800">
@@ -2193,3 +2200,4 @@ export default function SellerDashboardPage() {
     </div>
   );
 }
+

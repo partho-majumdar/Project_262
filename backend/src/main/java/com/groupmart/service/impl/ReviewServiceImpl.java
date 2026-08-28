@@ -10,10 +10,12 @@ import com.groupmart.common.exception.ResourceNotFoundException;
 import com.groupmart.dto.review.CreateReviewRequest;
 import com.groupmart.dto.review.ProductReviewSummaryDto;
 import com.groupmart.dto.review.ReviewDto;
+import com.groupmart.dto.review.SellerReplyRequest;
 import com.groupmart.entity.*;
 import com.groupmart.repository.*;
 import com.groupmart.service.ReviewService;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +30,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
+    private final SellerStoreRepository sellerStoreRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -40,7 +43,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional(readOnly = true)
     public ProductReviewSummaryDto getProductReviewSummary(UUID productId) {
-        Product product = productRepository.findById(productId)
+        productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product", "id", productId));
 
         Double avgRating = reviewRepository.getAverageRatingByProductId(productId);
@@ -72,9 +75,10 @@ public class ReviewServiceImpl implements ReviewService {
             throw new ApiException("You have already submitted a review for this product", HttpStatus.CONFLICT);
         }
 
-        // Verify if customer has purchased and received this product
         boolean isVerifiedBuyer = orderRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
-                .filter(o -> o.getStatus() == OrderStatus.DELIVERED || o.getStatus() == OrderStatus.PROCESSING || o.getStatus() == OrderStatus.SHIPPED)
+                .filter(o -> o.getStatus() == OrderStatus.DELIVERED
+                        || o.getStatus() == OrderStatus.PROCESSING
+                        || o.getStatus() == OrderStatus.SHIPPED)
                 .flatMap(o -> o.getItems().stream())
                 .anyMatch(i -> i.getProduct().getId().equals(productId));
 
@@ -89,8 +93,6 @@ public class ReviewServiceImpl implements ReviewService {
                 .build();
 
         Review savedReview = reviewRepository.save(review);
-
-        // Update product average rating & review count
         recalculateProductRating(product);
 
         return mapToDto(savedReview);
@@ -111,7 +113,6 @@ public class ReviewServiceImpl implements ReviewService {
 
         Product product = review.getProduct();
         reviewRepository.delete(review);
-
         recalculateProductRating(product);
     }
 
@@ -122,6 +123,44 @@ public class ReviewServiceImpl implements ReviewService {
                 .orElseThrow(() -> new ResourceNotFoundException("Review", "id", reviewId));
 
         review.setHelpfulVotes(review.getHelpfulVotes() + 1);
+        Review updated = reviewRepository.save(review);
+        return mapToDto(updated);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReviewDto> getSellerProductReviews(String sellerEmail) {
+        User user = userRepository.findByEmail(sellerEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", sellerEmail));
+
+        SellerStore store = sellerStoreRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
+
+        return reviewRepository.findBySellerStoreId(store.getId()).stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public ReviewDto replyToReview(String sellerEmail, UUID reviewId, SellerReplyRequest request) {
+        User user = userRepository.findByEmail(sellerEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", sellerEmail));
+
+        SellerStore store = sellerStoreRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
+
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResourceNotFoundException("Review", "id", reviewId));
+
+        if (review.getProduct().getSellerStore() == null
+                || !review.getProduct().getSellerStore().getId().equals(store.getId())) {
+            throw new ApiException("You can only reply to reviews on your own products", HttpStatus.FORBIDDEN);
+        }
+
+        review.setSellerReply(request.getReply().trim());
+        review.setSellerRepliedAt(LocalDateTime.now());
+
         Review updated = reviewRepository.save(review);
         return mapToDto(updated);
     }
@@ -147,6 +186,8 @@ public class ReviewServiceImpl implements ReviewService {
                 .comment(review.getComment())
                 .verifiedPurchase(review.isVerifiedPurchase())
                 .helpfulVotes(review.getHelpfulVotes())
+                .sellerReply(review.getSellerReply())
+                .sellerRepliedAt(review.getSellerRepliedAt())
                 .createdAt(review.getCreatedAt())
                 .build();
     }
