@@ -179,6 +179,7 @@ export default function SellerDashboardPage() {
         axiosClient.get('/categories'),
         axiosClient.get('/seller/inventory'),
         axiosClient.get('/seller/orders'),
+        axiosClient.get('/seller/coupons'),
       ]);
 
       const val = (i) => (results[i].status === 'fulfilled' ? results[i].value : null);
@@ -189,6 +190,7 @@ export default function SellerDashboardPage() {
       const catRes = val(3);
       const invRes = val(4);
       const orderRes = val(5);
+      const couponRes = val(6);
 
       const overview = dashRes?.data ?? dashRes ?? null;
       const analyticsObj = anaRes?.data ?? anaRes ?? null;
@@ -208,6 +210,24 @@ export default function SellerDashboardPage() {
       setCategories(unwrapList(catRes));
       setInventoryList(invList);
       setOrders(orderList);
+
+      // Coupons (Marketing)
+      const couponList = unwrapList(couponRes);
+      setCoupons(
+        couponList.map((c) => ({
+          id: c.id,
+          code: c.code,
+          discountType: c.discountType,
+          discountValue: Number(c.discountValue),
+          minOrderAmount: Number(c.minOrderAmount ?? 0),
+          maxDiscountAmount: c.maxDiscountAmount != null ? Number(c.maxDiscountAmount) : null,
+          usageLimit: c.usageLimit,
+          timesUsed: c.timesUsed ?? 0,
+          expiryDate: c.expiryDate,
+          active: !!c.active,
+          localOnly: false,
+        }))
+      );
 
       // ---------- Load reviews for all seller products (Customer Relations) ----------
       let allReviews = [];
@@ -230,11 +250,10 @@ export default function SellerDashboardPage() {
             title: rev.title,
             verifiedPurchase: rev.verifiedPurchase,
             createdAt: rev.createdAt,
-            reply: null, // no backend reply support yet
+            reply: null,
           }));
         });
 
-        // newest first
         allReviews.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
       }
       setReviews(allReviews);
@@ -602,29 +621,41 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // Coupon
-  const handleCreateCoupon = (e) => {
+  // Coupon — fully dynamic (API)
+  const handleCreateCoupon = async (e) => {
     e.preventDefault();
-    if (!newCoupon.code) return;
-    setCoupons((prev) => [
-      {
-        id: Date.now().toString(),
-        code: newCoupon.code.toUpperCase(),
+    if (!newCoupon.code?.trim()) return;
+
+    try {
+      await axiosClient.post('/seller/coupons', {
+        code: newCoupon.code.trim().toUpperCase(),
         discountType: newCoupon.discountType,
         discountValue: Number(newCoupon.discountValue),
-        minOrderAmount: Number(newCoupon.minOrderAmount),
-        active: true,
-        localOnly: true,
-      },
-      ...prev,
-    ]);
-    setNewCoupon({
-      code: '',
-      discountType: 'PERCENTAGE',
-      discountValue: 10,
-      minOrderAmount: 0,
-    });
-    alert('Coupon saved locally only. Backend seller-coupon API is not available yet.');
+        minOrderAmount: Number(newCoupon.minOrderAmount) || 0,
+      });
+
+      alert('Coupon created successfully!');
+      setNewCoupon({
+        code: '',
+        discountType: 'PERCENTAGE',
+        discountValue: 10,
+        minOrderAmount: 0,
+      });
+      await loadData();
+    } catch (err) {
+      alert(err?.message || 'Failed to create coupon');
+    }
+  };
+
+  const handleToggleCoupon = async (id, currentlyActive) => {
+    try {
+      await axiosClient.put(`/seller/coupons/${id}/status`, null, {
+        params: { active: !currentlyActive },
+      });
+      await loadData();
+    } catch (err) {
+      alert(err?.message || 'Failed to update coupon status');
+    }
   };
 
   // Reviews (local reply only — backend has no seller reply endpoint yet)
@@ -1306,7 +1337,7 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* CUSTOMERS — now fully dynamic for list + reviews */}
+        {/* CUSTOMERS */}
         {activeSubTab === 'customers' && (
           <div className="space-y-6">
             <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
@@ -1425,15 +1456,14 @@ export default function SellerDashboardPage() {
           </div>
         )}
 
-        {/* MARKETING */}
+        {/* MARKETING — fully dynamic */}
         {activeSubTab === 'marketing' && (
           <div className="space-y-4">
-            <p className="text-xs text-amber-300/90 bg-amber-950/30 border border-amber-900 rounded-xl px-3 py-2">
-              Coupons are stored in the browser only. There is no seller-scoped coupon API yet (admin coupons exist separately).
-            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Create coupon (local)</h3>
+                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
+                  Create coupon
+                </h3>
                 <form onSubmit={handleCreateCoupon} className="space-y-3 text-xs">
                   <div className="space-y-1">
                     <label className="font-semibold text-slate-300">Promo code</label>
@@ -1441,7 +1471,9 @@ export default function SellerDashboardPage() {
                       type="text"
                       placeholder="e.g. SPECIAL10"
                       value={newCoupon.code}
-                      onChange={(e) => setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })}
+                      onChange={(e) =>
+                        setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })
+                      }
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 font-mono"
                       required
                     />
@@ -1451,7 +1483,9 @@ export default function SellerDashboardPage() {
                       <label className="font-semibold text-slate-300">Type</label>
                       <select
                         value={newCoupon.discountType}
-                        onChange={(e) => setNewCoupon({ ...newCoupon, discountType: e.target.value })}
+                        onChange={(e) =>
+                          setNewCoupon({ ...newCoupon, discountType: e.target.value })
+                        }
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                       >
                         <option value="PERCENTAGE">Percentage (%)</option>
@@ -1463,7 +1497,9 @@ export default function SellerDashboardPage() {
                       <input
                         type="number"
                         value={newCoupon.discountValue}
-                        onChange={(e) => setNewCoupon({ ...newCoupon, discountValue: e.target.value })}
+                        onChange={(e) =>
+                          setNewCoupon({ ...newCoupon, discountValue: e.target.value })
+                        }
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                         required
                       />
@@ -1474,36 +1510,68 @@ export default function SellerDashboardPage() {
                     <input
                       type="number"
                       value={newCoupon.minOrderAmount}
-                      onChange={(e) => setNewCoupon({ ...newCoupon, minOrderAmount: e.target.value })}
+                      onChange={(e) =>
+                        setNewCoupon({ ...newCoupon, minOrderAmount: e.target.value })
+                      }
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                     />
                   </div>
-                  <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold">
-                    Add local coupon
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold"
+                  >
+                    Create coupon
                   </button>
                 </form>
               </div>
 
               <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Active coupons</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">
+                    Coupons ({coupons.length})
+                  </h3>
+                  <button
+                    onClick={loadData}
+                    className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                  </button>
+                </div>
                 <div className="space-y-3 overflow-y-auto max-h-72">
-                  {coupons.length === 0 && <p className="text-xs text-slate-500">No coupons yet.</p>}
+                  {coupons.length === 0 && (
+                    <p className="text-xs text-slate-500">No coupons yet. Create one.</p>
+                  )}
                   {coupons.map((c) => (
                     <div
                       key={c.id}
-                      className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between text-xs"
+                      className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between text-xs gap-2"
                     >
                       <div>
                         <span className="font-extrabold text-white bg-slate-800 border border-slate-700 px-2 py-0.5 rounded font-mono">
                           {c.code}
                         </span>
-                        <span className="text-[10px] text-slate-400 block mt-1">Min: ${c.minOrderAmount}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-black text-indigo-400 text-sm block">
-                          {c.discountType === 'PERCENTAGE' ? `${c.discountValue}% OFF` : `$${c.discountValue} OFF`}
+                        <span className="text-[10px] text-slate-400 block mt-1">
+                          Min: ${c.minOrderAmount ?? 0}
+                          {c.timesUsed != null ? ` · Used ${c.timesUsed}` : ''}
                         </span>
-                        <span className="text-[9px] text-slate-500 font-bold uppercase block">local only</span>
+                      </div>
+                      <div className="text-right flex flex-col items-end gap-1">
+                        <span className="font-black text-indigo-400 text-sm block">
+                          {c.discountType === 'PERCENTAGE'
+                            ? `${c.discountValue}% OFF`
+                            : `$${c.discountValue} OFF`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleCoupon(c.id, c.active)}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                            c.active
+                              ? 'bg-emerald-950 border-emerald-800 text-emerald-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          {c.active ? 'Active' : 'Inactive'}
+                        </button>
                       </div>
                     </div>
                   ))}
