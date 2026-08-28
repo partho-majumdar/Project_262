@@ -1,12 +1,17 @@
 package com.groupmart.controller;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import com.groupmart.common.response.ApiResponse;
 import com.groupmart.dto.review.ProductReviewSummaryDto;
 import com.groupmart.dto.review.ReviewDto;
+import com.groupmart.dto.review.SellerReplyRequest;
 import com.groupmart.service.ReviewService;
 
 import java.util.List;
@@ -35,5 +40,26 @@ public class ReviewController {
     public ResponseEntity<ApiResponse<ReviewDto>> voteHelpful(@PathVariable UUID reviewId) {
         ReviewDto updated = reviewService.voteHelpful(reviewId);
         return ResponseEntity.ok(ApiResponse.success("Voted helpful", updated));
+    }
+
+    /** Seller: all reviews across own products */
+    @GetMapping("/seller/me")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<List<ReviewDto>>> getMyProductReviews(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        List<ReviewDto> reviews = reviewService.getSellerProductReviews(userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Seller product reviews fetched", reviews));
+    }
+
+    /** Seller: reply to a review on own product */
+    @PostMapping("/{reviewId}/seller-reply")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ReviewDto>> sellerReply(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable UUID reviewId,
+            @Valid @RequestBody SellerReplyRequest request) {
+        ReviewDto updated = reviewService.replyToReview(
+                userDetails.getUsername(), reviewId, request);
+        return ResponseEntity.ok(ApiResponse.success("Reply saved", updated));
     }
 }

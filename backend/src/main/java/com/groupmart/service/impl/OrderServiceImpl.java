@@ -19,12 +19,15 @@ import com.groupmart.service.CartService;
 import com.groupmart.service.CouponService;
 import com.groupmart.service.InventoryService;
 import com.groupmart.service.OrderService;
+import com.groupmart.service.WalletService;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,6 +43,7 @@ public class OrderServiceImpl implements OrderService {
     private final CartService cartService;
     private final InventoryService inventoryService;
     private final CouponService couponService;
+    private final WalletService walletService;
 
     private static final BigDecimal TAX_RATE = new BigDecimal("0.08");
 
@@ -119,7 +123,6 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal totalAmount = discountedSubtotal.add(taxAmount).add(shippingAmount);
         String orderNumber = generateOrderNumber();
 
-        // NEW ORDERS START AS PENDING so seller can Accept
         Order order = Order.builder()
                 .orderNumber(orderNumber)
                 .user(user)
@@ -263,7 +266,6 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Order", "orderNumber", orderNumber));
 
-        // Seller can only update orders that contain their products
         if (user.getRole() != Role.ROLE_ADMIN) {
             SellerStore store = sellerStoreRepository.findByUserId(user.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
@@ -297,9 +299,24 @@ public class OrderServiceImpl implements OrderService {
 
         if (next == OrderStatus.DELIVERED) {
             order.setPaymentStatus(PaymentStatus.COMPLETED);
+
+            // Credit each seller store for their line items (after 15% platform fee inside WalletService)
+            Map<UUID, BigDecimal> byStore = order.getItems().stream()
+                    .filter(item -> item.getSellerStore() != null)
+                    .collect(Collectors.groupingBy(
+                            item -> item.getSellerStore().getId(),
+                            Collectors.reducing(
+                                    BigDecimal.ZERO,
+                                    item -> item.getSubtotal() != null ? item.getSubtotal() : BigDecimal.ZERO,
+                                    BigDecimal::add
+                            )
+                    ));
+
+            byStore.forEach((storeId, gross) ->
+                    walletService.creditFromOrder(storeId, gross, order.getOrderNumber())
+            );
         }
 
-        // Cancel from seller side → restore stock
         if (next == OrderStatus.CANCELLED) {
             if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
                 order.setPaymentStatus(PaymentStatus.REFUNDED);
