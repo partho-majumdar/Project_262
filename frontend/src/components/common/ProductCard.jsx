@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Star,
@@ -11,16 +11,19 @@ import {
   ImageOff,
 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
+import { useAuth } from '../../context/AuthContext';
+import axiosClient from '../../api/axiosClient';
 
 export default function ProductCard({ product, onQuickView, onCompare }) {
   const navigate = useNavigate();
   const { addToCart } = useCart();
+  const { isAuthenticated } = useAuth();
 
   const [isWishlisted, setIsWishlisted] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [added, setAdded] = useState(false);
 
-  // Real image only — no stock Unsplash demo photo
   const primaryImage =
     !imgError && product?.imageUrls?.length > 0
       ? product.imageUrls[0]
@@ -29,7 +32,7 @@ export default function ProductCard({ product, onQuickView, onCompare }) {
         : null;
 
   const discountPercent =
-    product?.compareAtPrice &&
+    product?.compareAtPrice != null &&
     product?.price != null &&
     Number(product.compareAtPrice) > Number(product.price)
       ? Math.round(
@@ -40,9 +43,7 @@ export default function ProductCard({ product, onQuickView, onCompare }) {
       : null;
 
   const rating =
-    product?.rating != null && product.rating !== ''
-      ? Number(product.rating)
-      : null;
+    product?.rating != null && product.rating !== '' ? Number(product.rating) : null;
   const reviewCount =
     product?.reviewCount != null ? Number(product.reviewCount) : null;
 
@@ -60,28 +61,86 @@ export default function ProductCard({ product, onQuickView, onCompare }) {
   const compareAt =
     product?.compareAtPrice != null ? Number(product.compareAtPrice) : null;
   const inStock = (product?.stockQuantity ?? 0) > 0;
+  const productId = product?.id;
 
-  const handleAddToCart = (e) => {
+  // Load wishlist state from API when logged in
+  useEffect(() => {
+    if (!isAuthenticated || !productId) {
+      setIsWishlisted(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axiosClient.get('/wishlist');
+        const data = res.data?.data ?? res.data;
+        const items = data?.items || [];
+        if (!cancelled) {
+          setIsWishlisted(
+            items.some((i) => i.productId === productId || i.product?.id === productId)
+          );
+        }
+      } catch {
+        if (!cancelled) setIsWishlisted(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, productId]);
+
+  const handleToggleWishlist = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!product) return;
-    addToCart(product, 1);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
+    if (!productId) return;
+    if (!isAuthenticated) {
+      alert('Please log in to use wishlist');
+      return;
+    }
+    setWishlistLoading(true);
+    try {
+      if (isWishlisted) {
+        await axiosClient.delete(`/wishlist/items/${productId}`);
+        setIsWishlisted(false);
+      } else {
+        await axiosClient.post(`/wishlist/items/${productId}`);
+        setIsWishlisted(true);
+      }
+    } catch (err) {
+      alert(err?.message || 'Wishlist update failed');
+    } finally {
+      setWishlistLoading(false);
+    }
   };
 
-  const handleBuyNow = (e) => {
+  const handleAddToCart = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!product) return;
-    addToCart(product, 1);
-    navigate('/checkout');
+    if (!productId || !inStock) return;
+    try {
+      await addToCart(productId, 1);
+      setAdded(true);
+      setTimeout(() => setAdded(false), 2000);
+    } catch (err) {
+      alert(err?.message || 'Failed to add to cart');
+    }
+  };
+
+  const handleBuyNow = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!productId || !inStock) return;
+    try {
+      await addToCart(productId, 1);
+      navigate('/checkout');
+    } catch (err) {
+      alert(err?.message || 'Failed to add to cart');
+    }
   };
 
   return (
     <div className="glass-card rounded-3xl border border-slate-800 p-4 space-y-4 hover:border-slate-700 transition-all flex flex-col justify-between group h-full">
       <div className="space-y-3">
-        {/* Image — only real product images */}
         <div className="h-52 bg-slate-900 rounded-2xl overflow-hidden relative border border-slate-800/80">
           {primaryImage ? (
             <img
@@ -112,13 +171,10 @@ export default function ProductCard({ product, onQuickView, onCompare }) {
           </span>
 
           <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsWishlisted(!isWishlisted);
-            }}
-            className="absolute top-3 right-3 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-full text-slate-300 transition shadow-md"
-            title="Add to Wishlist"
+            onClick={handleToggleWishlist}
+            disabled={wishlistLoading}
+            className="absolute top-3 right-3 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-full text-slate-300 transition shadow-md disabled:opacity-50"
+            title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
           >
             <Heart
               className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`}
@@ -155,7 +211,6 @@ export default function ProductCard({ product, onQuickView, onCompare }) {
           </div>
         </div>
 
-        {/* Metadata — only show fields that exist */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center text-[10px] font-mono text-slate-400 gap-2">
             {brand ? (
@@ -206,7 +261,6 @@ export default function ProductCard({ product, onQuickView, onCompare }) {
         </div>
       </div>
 
-      {/* Price + actions */}
       <div className="pt-3 border-t border-slate-800/80 space-y-2">
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-extrabold text-emerald-400">

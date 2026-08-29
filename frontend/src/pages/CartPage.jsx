@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   XCircle,
   X,
+  ImageOff,
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 
@@ -70,20 +71,20 @@ export default function CartPage() {
           </div>
           <h2 className="text-2xl font-bold text-white">Your Cart is Empty</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Looks like you haven't added any products to your cart yet. Explore our enterprise catalog!
+            Looks like you haven't added any products to your cart yet. Explore our catalog!
           </p>
           <Link
             to="/products"
             className="inline-flex items-center gap-2 bg-gradient-to-r from-nexus-600 to-indigo-600 hover:from-nexus-500 hover:to-indigo-500 text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-nexus-600/30 text-xs transition-all"
           >
-            Browse Products Catalog <ArrowRight className="w-4 h-4" />
+            Browse Products <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
       </div>
     );
   }
 
-  // Backend-only totals (no hardcoded tax / shipping rules)
+  // Backend-only totals
   const discountAmount = appliedCoupon ? Number(appliedCoupon.calculatedDiscount || 0) : 0;
   const subtotal = Number(cart.subtotalAmount || 0);
   const finalSubtotal = Math.max(0, subtotal - discountAmount);
@@ -119,7 +120,7 @@ export default function CartPage() {
             </span>
           </h1>
           <p className="text-xs text-slate-400">
-            Review line items, apply promotional discount coupons, and prepare for checkout
+            Review items, apply coupons, and proceed to checkout
           </p>
         </div>
         <button
@@ -136,11 +137,11 @@ export default function CartPage() {
             <span className="text-slate-300 flex items-center gap-1.5 font-medium">
               <Truck className="w-4 h-4 text-nexus-400" />
               {finalSubtotal >= freeShippingThreshold ? (
-                <span className="text-emerald-400 font-bold">You qualify for FREE Express Shipping!</span>
+                <span className="text-emerald-400 font-bold">You qualify for FREE shipping</span>
               ) : (
                 <span>
-                  Add ${(freeShippingThreshold - finalSubtotal).toFixed(2)} more to qualify for{' '}
-                  <strong>FREE Shipping</strong>
+                  Add ${(freeShippingThreshold - finalSubtotal).toFixed(2)} more for{' '}
+                  <strong>FREE shipping</strong>
                 </span>
               )}
             </span>
@@ -163,24 +164,27 @@ export default function CartPage() {
               className="glass-card p-4 sm:p-5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 hover:border-slate-700 transition-all"
             >
               <div className="flex items-center gap-4 w-full sm:w-auto">
-                <div className="w-20 h-20 bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shrink-0">
-                  <img
-                    src={
-                      item.imageUrl ||
-                      'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=300&auto=format&fit=crop'
-                    }
-                    alt={item.productName}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="w-20 h-20 bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shrink-0 flex items-center justify-center">
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.productName || 'Product'}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <ImageOff className="w-6 h-6 text-slate-600" />
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Link
-                    to={`/products/${item.productSlug}`}
+                    to={`/products/${item.productSlug || item.productId}`}
                     className="font-bold text-white text-sm hover:text-nexus-400 transition-colors line-clamp-1"
                   >
                     {item.productName}
                   </Link>
-                  <p className="text-[11px] text-slate-500 font-mono">SKU: {item.productSku}</p>
+                  {item.productSku && (
+                    <p className="text-[11px] text-slate-500 font-mono">SKU: {item.productSku}</p>
+                  )}
                   <p className="text-xs text-nexus-400 font-semibold">
                     ${Number(item.unitPrice).toFixed(2)} each
                   </p>
@@ -198,7 +202,9 @@ export default function CartPage() {
                   <span className="px-3 text-xs font-bold text-white">{item.quantity}</span>
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    disabled={item.quantity >= item.stockAvailable}
+                    disabled={
+                      item.stockAvailable != null && item.quantity >= item.stockAvailable
+                    }
                     className="text-slate-400 hover:text-white px-2 font-bold text-sm disabled:opacity-30"
                   >
                     +
@@ -224,20 +230,23 @@ export default function CartPage() {
         <div className="space-y-6">
           <div className="glass-card p-5 rounded-3xl border border-slate-800 space-y-3">
             <h4 className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
-              <Tag className="w-4 h-4 text-nexus-400" /> Apply Promotional Coupon
+              <Tag className="w-4 h-4 text-nexus-400" /> Promo code
             </h4>
 
             {appliedCoupon ? (
               <div className="p-3 bg-emerald-950/80 border border-emerald-800 rounded-2xl flex items-center justify-between gap-2 text-xs">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 font-bold text-emerald-300">
-                    <CheckCircle2 className="w-4 h-4" /> Code: {appliedCoupon.code}
+                    <CheckCircle2 className="w-4 h-4" /> {appliedCoupon.code}
                   </div>
                   <p className="text-[11px] text-emerald-400/80">
-                    Saving ${Number(appliedCoupon.calculatedDiscount || 0).toFixed(2)} off your subtotal
+                    −${Number(appliedCoupon.calculatedDiscount || 0).toFixed(2)}
                   </p>
                 </div>
-                <button onClick={removeAppliedCoupon} className="text-slate-400 hover:text-rose-400 p-1">
+                <button
+                  onClick={removeAppliedCoupon}
+                  className="text-slate-400 hover:text-rose-400 p-1"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -281,21 +290,21 @@ export default function CartPage() {
 
               {appliedCoupon && (
                 <div className="flex justify-between text-emerald-400 font-semibold">
-                  <span>Promo Discount ({appliedCoupon.code})</span>
-                  <span>-${discountAmount.toFixed(2)}</span>
+                  <span>Discount ({appliedCoupon.code})</span>
+                  <span>−${discountAmount.toFixed(2)}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-slate-400">
                 <span>
-                  Estimated Tax
+                  Tax
                   {taxRate ? ` (${(taxRate * 100).toFixed(0)}%)` : ''}
                 </span>
                 <span className="font-semibold text-slate-200">${finalTax.toFixed(2)}</span>
               </div>
 
               <div className="flex justify-between text-slate-400">
-                <span>Shipping Fee</span>
+                <span>Shipping</span>
                 <span className="font-semibold text-slate-200">
                   {shippingFee === 0 ? (
                     <span className="text-emerald-400 font-bold uppercase">FREE</span>
@@ -306,7 +315,7 @@ export default function CartPage() {
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex justify-between items-baseline text-sm">
-                <span className="font-bold text-white">Total Amount</span>
+                <span className="font-bold text-white">Total</span>
                 <span className="text-xl font-extrabold text-white">
                   ${finalTotalAmount.toFixed(2)}
                 </span>
@@ -317,11 +326,11 @@ export default function CartPage() {
               onClick={() => navigate('/checkout')}
               className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-nexus-600 to-indigo-600 hover:from-nexus-500 hover:to-indigo-500 text-white font-semibold py-3 rounded-xl shadow-lg shadow-nexus-600/30 text-xs transition-all"
             >
-              Proceed to Secure Checkout <ArrowRight className="w-4 h-4" />
+              Checkout <ArrowRight className="w-4 h-4" />
             </button>
 
             <div className="text-[11px] text-slate-400 text-center flex items-center justify-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> 256-Bit Encrypted Secure Checkout
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Secure checkout
             </div>
           </div>
         </div>
