@@ -4,14 +4,10 @@ import { useCart } from '../context/CartContext';
 import { 
   ShoppingCart, 
   Trash2, 
-  Plus, 
-  Minus, 
   ArrowRight, 
-  ArrowLeft, 
   ShieldCheck, 
   Truck, 
   Tag, 
-  Sparkles,
   ShoppingBag,
   CheckCircle2,
   XCircle,
@@ -87,12 +83,28 @@ export default function CartPage() {
     );
   }
 
-  const discountAmount = appliedCoupon ? appliedCoupon.calculatedDiscount : 0;
-  const finalSubtotal = Math.max(0, cart.subtotalAmount - discountAmount);
-  const finalTax = finalSubtotal * 0.08;
-  const freeShippingThreshold = 100.00;
-  const shippingFee = (finalSubtotal >= freeShippingThreshold || cart.totalItems === 0) ? 0 : 15.00;
-  const finalTotalAmount = finalSubtotal + finalTax + shippingFee;
+  // Prefer backend values when available — no hardcoded business rules
+  const discountAmount = appliedCoupon ? Number(appliedCoupon.calculatedDiscount || 0) : 0;
+  const subtotal = Number(cart.subtotalAmount || 0);
+  const finalSubtotal = Math.max(0, subtotal - discountAmount);
+
+  const taxRate = cart.taxRate != null ? Number(cart.taxRate) : 0.08;
+  const finalTax = cart.taxAmount != null
+    ? Number(cart.taxAmount)
+    : finalSubtotal * taxRate;
+
+  const freeShippingThreshold = cart.freeShippingThreshold != null
+    ? Number(cart.freeShippingThreshold)
+    : 100;
+
+  const shippingFee = cart.shippingAmount != null
+    ? Number(cart.shippingAmount)
+    : (finalSubtotal >= freeShippingThreshold || cart.totalItems === 0 ? 0 : 15);
+
+  const finalTotalAmount = cart.totalAmount != null && !appliedCoupon
+    ? Number(cart.totalAmount)
+    : finalSubtotal + finalTax + shippingFee;
+
   const progressPercentage = Math.min(100, (finalSubtotal / freeShippingThreshold) * 100);
 
   return (
@@ -162,7 +174,7 @@ export default function CartPage() {
                     {item.productName}
                   </Link>
                   <p className="text-[11px] text-slate-500 font-mono">SKU: {item.productSku}</p>
-                  <p className="text-xs text-nexus-400 font-semibold">${item.unitPrice.toFixed(2)} each</p>
+                  <p className="text-xs text-nexus-400 font-semibold">${Number(item.unitPrice).toFixed(2)} each</p>
                 </div>
               </div>
 
@@ -186,7 +198,7 @@ export default function CartPage() {
                 </div>
 
                 <div className="text-right">
-                  <p className="text-base font-extrabold text-white">${item.subtotal.toFixed(2)}</p>
+                  <p className="text-base font-extrabold text-white">${Number(item.subtotal).toFixed(2)}</p>
                 </div>
 
                 <button
@@ -216,7 +228,9 @@ export default function CartPage() {
                   <div className="flex items-center gap-1.5 font-bold text-emerald-300">
                     <CheckCircle2 className="w-4 h-4" /> Code: {appliedCoupon.code}
                   </div>
-                  <p className="text-[11px] text-emerald-400/80">Saving ${appliedCoupon.calculatedDiscount.toFixed(2)} off your subtotal</p>
+                  <p className="text-[11px] text-emerald-400/80">
+                    Saving ${Number(appliedCoupon.calculatedDiscount || 0).toFixed(2)} off your subtotal
+                  </p>
                 </div>
                 <button onClick={removeAppliedCoupon} className="text-slate-400 hover:text-rose-400 p-1">
                   <X className="w-4 h-4" />
@@ -229,7 +243,7 @@ export default function CartPage() {
                     type="text"
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
-                    placeholder="Enter code e.g. WELCOME10"
+                    placeholder="Enter promo code"
                     className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 uppercase focus:border-nexus-500"
                   />
                   <button
@@ -245,12 +259,6 @@ export default function CartPage() {
                     <XCircle className="w-3.5 h-3.5" /> {couponError}
                   </p>
                 )}
-                <div className="flex items-center gap-1 text-[11px] text-slate-400 pt-1">
-                  <span>Try:</span>
-                  <button type="button" onClick={() => setCouponCode('WELCOME10')} className="text-nexus-400 hover:underline font-mono">WELCOME10</button>
-                  <span>•</span>
-                  <button type="button" onClick={() => setCouponCode('NEXUS20')} className="text-nexus-400 hover:underline font-mono">NEXUS20</button>
-                </div>
               </form>
             )}
           </div>
@@ -264,7 +272,7 @@ export default function CartPage() {
             <div className="space-y-3 text-xs">
               <div className="flex justify-between text-slate-400">
                 <span>Subtotal ({cart.totalItems} items)</span>
-                <span className="font-semibold text-slate-200">${cart.subtotalAmount.toFixed(2)}</span>
+                <span className="font-semibold text-slate-200">${subtotal.toFixed(2)}</span>
               </div>
 
               {appliedCoupon && (
@@ -275,7 +283,7 @@ export default function CartPage() {
               )}
 
               <div className="flex justify-between text-slate-400">
-                <span>Estimated Tax (8%)</span>
+                <span>Estimated Tax {taxRate ? `(${(taxRate * 100).toFixed(0)}%)` : ''}</span>
                 <span className="font-semibold text-slate-200">${finalTax.toFixed(2)}</span>
               </div>
 
@@ -303,11 +311,8 @@ export default function CartPage() {
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> 256-Bit Encrypted Secure Checkout
             </div>
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }

@@ -658,7 +658,7 @@ export default function LandingPage() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="glass-panel p-8 rounded-3xl border border-slate-800 bg-slate-900/60 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="space-y-1 text-center md:text-left">
-            <h3 className="text-lg font-bold text-white">Subscribe to NexusVIP Offers</h3>
+            <h3 className="text-lg font-bold text-white">Subscribe to GroupMartVIP Offers</h3>
             <p className="text-xs text-slate-400">Get $20 discount code on your first order + early access to flash deals.</p>
           </div>
 

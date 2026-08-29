@@ -34,7 +34,7 @@ export default function Footer() {
       <div className="border-b border-slate-900 bg-slate-900/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="space-y-1 text-center md:text-left">
-            <h3 className="text-base font-extrabold text-white">Subscribe to NexusVIP Offers</h3>
+            <h3 className="text-base font-extrabold text-white">Subscribe to GroupMartVIP Offers</h3>
             <p className="text-slate-400">Get $20 discount code on your first order + early access to flash deals.</p>
           </div>
 
