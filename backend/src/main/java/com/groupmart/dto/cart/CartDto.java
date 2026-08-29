@@ -19,7 +19,12 @@ public class CartDto {
     private List<CartItemDto> items;
     private int totalItems;
     private BigDecimal subtotalAmount;
+
+    private BigDecimal taxRate;
+    private BigDecimal taxAmount;
     private BigDecimal estimatedTax;
+
+    private BigDecimal freeShippingThreshold;
     private BigDecimal shippingAmount;
     private BigDecimal totalAmount;
 }

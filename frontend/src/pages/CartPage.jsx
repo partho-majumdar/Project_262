@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { 
-  ShoppingCart, 
-  Trash2, 
-  ArrowRight, 
-  ShieldCheck, 
-  Truck, 
-  Tag, 
+import {
+  ShoppingCart,
+  Trash2,
+  ArrowRight,
+  ShieldCheck,
+  Truck,
+  Tag,
   ShoppingBag,
   CheckCircle2,
   XCircle,
-  X
+  X,
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 
@@ -83,34 +83,33 @@ export default function CartPage() {
     );
   }
 
-  // Prefer backend values when available — no hardcoded business rules
+  // Backend-only totals (no hardcoded tax / shipping rules)
   const discountAmount = appliedCoupon ? Number(appliedCoupon.calculatedDiscount || 0) : 0;
   const subtotal = Number(cart.subtotalAmount || 0);
   const finalSubtotal = Math.max(0, subtotal - discountAmount);
 
-  const taxRate = cart.taxRate != null ? Number(cart.taxRate) : 0.08;
-  const finalTax = cart.taxAmount != null
-    ? Number(cart.taxAmount)
-    : finalSubtotal * taxRate;
+  const taxRate = Number(cart.taxRate ?? 0);
+  const finalTax =
+    cart.taxAmount != null
+      ? Number(cart.taxAmount)
+      : cart.estimatedTax != null
+        ? Number(cart.estimatedTax)
+        : 0;
 
-  const freeShippingThreshold = cart.freeShippingThreshold != null
-    ? Number(cart.freeShippingThreshold)
-    : 100;
+  const freeShippingThreshold = Number(cart.freeShippingThreshold ?? 0);
+  const shippingFee = Number(cart.shippingAmount ?? 0);
 
-  const shippingFee = cart.shippingAmount != null
-    ? Number(cart.shippingAmount)
-    : (finalSubtotal >= freeShippingThreshold || cart.totalItems === 0 ? 0 : 15);
+  const finalTotalAmount = appliedCoupon
+    ? finalSubtotal + finalTax + shippingFee
+    : Number(cart.totalAmount ?? finalSubtotal + finalTax + shippingFee);
 
-  const finalTotalAmount = cart.totalAmount != null && !appliedCoupon
-    ? Number(cart.totalAmount)
-    : finalSubtotal + finalTax + shippingFee;
-
-  const progressPercentage = Math.min(100, (finalSubtotal / freeShippingThreshold) * 100);
+  const progressPercentage =
+    freeShippingThreshold > 0
+      ? Math.min(100, (finalSubtotal / freeShippingThreshold) * 100)
+      : 100;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
@@ -119,9 +118,10 @@ export default function CartPage() {
               {cart.totalItems} Items
             </span>
           </h1>
-          <p className="text-xs text-slate-400">Review line items, apply promotional discount coupons, and prepare for checkout</p>
+          <p className="text-xs text-slate-400">
+            Review line items, apply promotional discount coupons, and prepare for checkout
+          </p>
         </div>
-
         <button
           onClick={clearCart}
           className="text-xs text-slate-400 hover:text-rose-400 flex items-center gap-1 font-semibold hover:underline w-fit"
@@ -130,31 +130,32 @@ export default function CartPage() {
         </button>
       </div>
 
-      {/* Free Shipping Progress Indicator */}
-      <div className="glass-card p-4 rounded-2xl border border-slate-800 space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-300 flex items-center gap-1.5 font-medium">
-            <Truck className="w-4 h-4 text-nexus-400" />
-            {finalSubtotal >= freeShippingThreshold ? (
-              <span className="text-emerald-400 font-bold">You qualify for FREE Express Shipping!</span>
-            ) : (
-              <span>Add ${(freeShippingThreshold - finalSubtotal).toFixed(2)} more to qualify for <strong>FREE Shipping</strong></span>
-            )}
-          </span>
-          <span className="text-slate-400 font-bold">{Math.round(progressPercentage)}%</span>
+      {freeShippingThreshold > 0 && (
+        <div className="glass-card p-4 rounded-2xl border border-slate-800 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-300 flex items-center gap-1.5 font-medium">
+              <Truck className="w-4 h-4 text-nexus-400" />
+              {finalSubtotal >= freeShippingThreshold ? (
+                <span className="text-emerald-400 font-bold">You qualify for FREE Express Shipping!</span>
+              ) : (
+                <span>
+                  Add ${(freeShippingThreshold - finalSubtotal).toFixed(2)} more to qualify for{' '}
+                  <strong>FREE Shipping</strong>
+                </span>
+              )}
+            </span>
+            <span className="text-slate-400 font-bold">{Math.round(progressPercentage)}%</span>
+          </div>
+          <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-nexus-500 to-emerald-400 transition-all duration-500"
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
         </div>
-        <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-          <div
-            className="h-full bg-gradient-to-r from-nexus-500 to-emerald-400 transition-all duration-500"
-            style={{ width: `${progressPercentage}%` }}
-          />
-        </div>
-      </div>
+      )}
 
-      {/* Main Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left: Cart Line Items */}
         <div className="lg:col-span-2 space-y-4">
           {cart.items.map((item) => (
             <div
@@ -164,22 +165,29 @@ export default function CartPage() {
               <div className="flex items-center gap-4 w-full sm:w-auto">
                 <div className="w-20 h-20 bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shrink-0">
                   <img
-                    src={item.imageUrl || 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=300&auto=format&fit=crop'}
+                    src={
+                      item.imageUrl ||
+                      'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=300&auto=format&fit=crop'
+                    }
                     alt={item.productName}
                     className="w-full h-full object-cover"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Link to={`/products/${item.productSlug}`} className="font-bold text-white text-sm hover:text-nexus-400 transition-colors line-clamp-1">
+                  <Link
+                    to={`/products/${item.productSlug}`}
+                    className="font-bold text-white text-sm hover:text-nexus-400 transition-colors line-clamp-1"
+                  >
                     {item.productName}
                   </Link>
                   <p className="text-[11px] text-slate-500 font-mono">SKU: {item.productSku}</p>
-                  <p className="text-xs text-nexus-400 font-semibold">${Number(item.unitPrice).toFixed(2)} each</p>
+                  <p className="text-xs text-nexus-400 font-semibold">
+                    ${Number(item.unitPrice).toFixed(2)} each
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto pt-3 sm:pt-0 border-t sm:border-t-0 border-slate-800">
-                {/* Quantity Controls */}
                 <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl px-2 py-1">
                   <button
                     onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
@@ -196,11 +204,11 @@ export default function CartPage() {
                     +
                   </button>
                 </div>
-
                 <div className="text-right">
-                  <p className="text-base font-extrabold text-white">${Number(item.subtotal).toFixed(2)}</p>
+                  <p className="text-base font-extrabold text-white">
+                    ${Number(item.subtotal).toFixed(2)}
+                  </p>
                 </div>
-
                 <button
                   onClick={() => removeFromCart(item.id)}
                   className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition-colors"
@@ -213,10 +221,7 @@ export default function CartPage() {
           ))}
         </div>
 
-        {/* Right: Order Summary Box & Promo Codes */}
         <div className="space-y-6">
-          
-          {/* Promo Code Input Box */}
           <div className="glass-card p-5 rounded-3xl border border-slate-800 space-y-3">
             <h4 className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
               <Tag className="w-4 h-4 text-nexus-400" /> Apply Promotional Coupon
@@ -263,7 +268,6 @@ export default function CartPage() {
             )}
           </div>
 
-          {/* Summary Box */}
           <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-5">
             <h3 className="text-base font-bold text-white border-b border-slate-800 pb-3 flex items-center gap-2">
               <ShoppingBag className="w-4 h-4 text-nexus-400" /> Order Summary
@@ -283,20 +287,29 @@ export default function CartPage() {
               )}
 
               <div className="flex justify-between text-slate-400">
-                <span>Estimated Tax {taxRate ? `(${(taxRate * 100).toFixed(0)}%)` : ''}</span>
+                <span>
+                  Estimated Tax
+                  {taxRate ? ` (${(taxRate * 100).toFixed(0)}%)` : ''}
+                </span>
                 <span className="font-semibold text-slate-200">${finalTax.toFixed(2)}</span>
               </div>
 
               <div className="flex justify-between text-slate-400">
                 <span>Shipping Fee</span>
                 <span className="font-semibold text-slate-200">
-                  {shippingFee === 0 ? <span className="text-emerald-400 font-bold uppercase">FREE</span> : `$${shippingFee.toFixed(2)}`}
+                  {shippingFee === 0 ? (
+                    <span className="text-emerald-400 font-bold uppercase">FREE</span>
+                  ) : (
+                    `$${shippingFee.toFixed(2)}`
+                  )}
                 </span>
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex justify-between items-baseline text-sm">
                 <span className="font-bold text-white">Total Amount</span>
-                <span className="text-xl font-extrabold text-white">${finalTotalAmount.toFixed(2)}</span>
+                <span className="text-xl font-extrabold text-white">
+                  ${finalTotalAmount.toFixed(2)}
+                </span>
               </div>
             </div>
 
