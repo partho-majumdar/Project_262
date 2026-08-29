@@ -178,6 +178,7 @@ public class ReviewServiceImpl implements ReviewService {
         return ReviewDto.builder()
                 .id(review.getId())
                 .productId(review.getProduct().getId())
+                .productName(review.getProduct() != null ? review.getProduct().getName() : null)
                 .userId(review.getUser().getId())
                 .userName(review.getUser().getFirstName() + " " + review.getUser().getLastName())
                 .userAvatar(review.getUser().getAvatarUrl())
@@ -190,5 +191,5 @@ public class ReviewServiceImpl implements ReviewService {
                 .sellerRepliedAt(review.getSellerRepliedAt())
                 .createdAt(review.getCreatedAt())
                 .build();
-    }
+        }
 }

@@ -16,6 +16,7 @@ public class ReviewDto {
 
     private UUID id;
     private UUID productId;
+    private String productName;
     private UUID userId;
     private String userName;
     private String userAvatar;
