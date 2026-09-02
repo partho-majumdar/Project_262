@@ -14,7 +14,7 @@
 
     <!-- Daily Rolling Main Application Log -->
     <appender name="RollingFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOGS}/nexuscommerce-application.log</file>
+        <file>${LOGS}/groupmart-application.log</file>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <Pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</Pattern>
         </encoder>
@@ -28,7 +28,7 @@
 
     <!-- Rolling Error Log Appender -->
     <appender name="ErrorFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOGS}/nexuscommerce-error.log</file>
+        <file>${LOGS}/groupmart-error.log</file>
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>ERROR</level>
         </filter>

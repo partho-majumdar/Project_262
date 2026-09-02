@@ -114,10 +114,6 @@ export default function CustomerLayout() {
                     <History className="w-4 h-4 text-cyan-400" /> Purchase History
                   </NavLink>
 
-                  <NavLink to="/wishlist" className="flex items-center gap-3 px-3 py-2 rounded-xl hover:text-white hover:bg-slate-800/60 transition">
-                    <Bookmark className="w-4 h-4 text-amber-400" /> Saved Items
-                  </NavLink>
-
                   <NavLink to="/products" className="flex items-center gap-3 px-3 py-2 rounded-xl hover:text-white hover:bg-slate-800/60 transition">
                     <Scale className="w-4 h-4 text-purple-400" /> Compare Products
                   </NavLink>
