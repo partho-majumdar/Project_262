@@ -36,7 +36,7 @@ public class ShippingServiceImpl implements ShippingService {
         BigDecimal standardRate = qualifiesForFreeShipping ? BigDecimal.ZERO : new BigDecimal("15.00");
         options.add(ShippingOptionDto.builder()
                 .id("STD_GROUND")
-                .carrier("Nexus Logistics Express")
+                .carrier("GroupMart Logistics Express")
                 .name("Standard Ground Shipping")
                 .estimatedDelivery("3-5 Business Days")
                 .rate(standardRate)

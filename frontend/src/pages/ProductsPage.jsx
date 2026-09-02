@@ -32,6 +32,7 @@ export default function ProductsPage() {
 
   const [selectedQuickView, setSelectedQuickView] = useState(null);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [compareProductId, setCompareProductId] = useState(null);
 
   const [query, setQuery] = useState(currentSearch);
   const [categorySlug, setCategorySlug] = useState(currentCategory);
@@ -359,7 +360,10 @@ export default function ProductsPage() {
                 key={product.id}
                 product={product}
                 onQuickView={(prod) => setSelectedQuickView(prod)}
-                onCompare={() => setIsCompareOpen(true)}
+                onCompare={(prod) => {
+                  setCompareProductId(prod?.id ?? null);
+                  setIsCompareOpen(true);
+                }}
               />
             ))}
           </div>
@@ -393,7 +397,15 @@ export default function ProductsPage() {
         onClose={() => setSelectedQuickView(null)}
         product={selectedQuickView}
       />
-      <ProductComparisonModal isOpen={isCompareOpen} onClose={() => setIsCompareOpen(false)} />
+      <ProductComparisonModal
+        isOpen={isCompareOpen}
+        onClose={() => {
+          setIsCompareOpen(false);
+          setCompareProductId(null);
+        }}
+        initialProductId={compareProductId}
+        products={searchResult?.content || []}
+      />
     </div>
   );
 }
