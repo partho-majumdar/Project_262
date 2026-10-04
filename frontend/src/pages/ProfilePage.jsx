@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { User, Mail, Phone, ShieldCheck, LogOut, Edit3, Lock, MapPin, KeyRound, Sparkles } from 'lucide-react';
+import { User, Mail, Phone, ShieldCheck, LogOut, Edit3, Lock, MapPin, KeyRound, Sparkles, Clock, AlertCircle } from 'lucide-react';
 import EditProfileModal from '../components/user/EditProfileModal';
 import ChangePasswordModal from '../components/user/ChangePasswordModal';
 import AddressBook from '../components/user/AddressBook';
+import { Roles, SellerStatus, ROUTES } from '../constants/roles';
 
 export default function ProfilePage() {
-  const { user, logout, isCustomer, isSeller, isAdmin } = useAuth();
+  const { user, logout, isCustomer, isSeller, isAdmin, sellerStatus } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -14,12 +16,42 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const handleProfileUpdated = (updatedUser) => {
-    window.location.reload(); // Refresh session data
+    window.location.reload();
   };
+
+  const roleLabel = user.role?.replace('ROLE_', '');
+  const isPending = sellerStatus === SellerStatus.PENDING;
+  const isRejected = sellerStatus === SellerStatus.REJECTED;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-8">
-      
+
+      {(isPending || isRejected) && (
+        <div className={`p-4 rounded-2xl border flex items-start gap-3 text-xs ${
+          isPending
+            ? 'bg-amber-950/60 border-amber-800 text-amber-200'
+            : 'bg-rose-950/60 border-rose-800 text-rose-200'
+        }`}>
+          {isPending ? <Clock className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+          <div className="space-y-1">
+            <p className="font-bold text-white">
+              {isPending ? 'Your seller application is under review' : 'Your seller application was rejected'}
+            </p>
+            <p className="text-[11px] opacity-90">
+              {isPending
+                ? 'You will be granted merchant access as soon as an administrator approves your store.'
+                : 'You can update your details and resubmit your application.'}
+            </p>
+            <Link
+              to={isPending ? ROUTES.SELLER_PENDING : ROUTES.SELLER_APPLY}
+              className="inline-flex items-center gap-1 text-nexus-300 hover:text-white font-semibold"
+            >
+              {isPending ? 'View status' : 'Resubmit application'} →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="glass-panel p-6 sm:p-8 rounded-3xl relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-6 border border-slate-800">
         <div className="absolute top-0 right-0 w-64 h-64 bg-nexus-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -38,13 +70,13 @@ export default function ProfilePage() {
                 {user.firstName} {user.lastName}
               </h1>
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                isAdmin 
-                  ? 'bg-rose-950/80 border-rose-800 text-rose-300' 
-                  : isSeller 
-                  ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300' 
+                isAdmin
+                  ? 'bg-rose-950/80 border-rose-800 text-rose-300'
+                  : isSeller
+                  ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
                   : 'bg-nexus-950/80 border-nexus-800 text-nexus-300'
               }`}>
-                {user.role?.replace('ROLE_', '')}
+                {roleLabel}
               </span>
             </div>
             <p className="text-xs text-slate-400 flex items-center gap-1.5">

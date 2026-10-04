@@ -151,7 +151,7 @@ export default function CategoryDetailPage() {
                   </div>
 
                   <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                    <span className="text-base font-extrabold text-white">${product.price.toFixed(2)}</span>
+                    <span className="text-base font-extrabold text-white">৳{product.price.toFixed(2)}</span>
                     <Link
                       to={`/products/${product.slug}`}
                       className="px-3 py-1.5 bg-nexus-600 hover:bg-nexus-500 text-white text-xs font-semibold rounded-xl"

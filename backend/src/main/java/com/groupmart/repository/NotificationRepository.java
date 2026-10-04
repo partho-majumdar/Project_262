@@ -13,5 +13,10 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
     List<Notification> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
+    /** Newest first, capped, so the bell never loads a user's whole history. */
+    List<Notification> findByUserIdOrderByCreatedAtDesc(UUID userId, org.springframework.data.domain.Pageable pageable);
+
+    List<Notification> findByUserIdAndReadFalse(UUID userId);
+
     long countByUserIdAndReadFalse(UUID userId);
 }

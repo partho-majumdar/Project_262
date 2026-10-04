@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import com.groupmart.entity.Review;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -19,6 +20,10 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     boolean existsByUserIdAndProductId(UUID userId, UUID productId);
 
+    Optional<Review> findByUserIdAndProductId(UUID userId, UUID productId);
+
+    List<Review> findByUserIdAndProductIdIn(UUID userId, List<UUID> productIds);
+
     int countByProductId(UUID productId);
 
     @Query("SELECT AVG(r.rating) FROM Review r WHERE r.product.id = :productId")
@@ -28,5 +33,7 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     @Query("SELECT r FROM Review r WHERE r.product.sellerStore.id = :storeId ORDER BY r.createdAt DESC")
     List<Review> findBySellerStoreId(@Param("storeId") UUID storeId);
+
+    List<Review> findTop8ByOrderByCreatedAtDesc();
 }
 

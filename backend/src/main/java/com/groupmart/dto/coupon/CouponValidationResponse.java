@@ -17,8 +17,11 @@ public class CouponValidationResponse {
 
     private boolean valid;
     private String code;
+    private String description;
     private DiscountType discountType;
     private BigDecimal discountValue;
+    private BigDecimal minOrderAmount;
+    private BigDecimal maxDiscountAmount;
     private BigDecimal calculatedDiscount;
     private String message;
 }

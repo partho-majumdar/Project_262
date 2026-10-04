@@ -9,15 +9,20 @@ import com.groupmart.common.exception.ApiException;
 import com.groupmart.common.exception.ResourceNotFoundException;
 import com.groupmart.dto.coupon.ApplyCouponRequest;
 import com.groupmart.dto.coupon.CouponValidationResponse;
+import com.groupmart.dto.notification.SendNotificationRequest;
 import com.groupmart.dto.order.OrderDto;
 import com.groupmart.dto.order.OrderItemDto;
+import com.groupmart.dto.order.OrderPaymentDetailsDto;
 import com.groupmart.dto.order.PlaceOrderRequest;
 import com.groupmart.dto.order.UpdateOrderStatusRequest;
 import com.groupmart.entity.*;
 import com.groupmart.repository.*;
+import com.groupmart.service.AuditLogService;
 import com.groupmart.service.CartService;
 import com.groupmart.service.CouponService;
+import com.groupmart.service.DeliveryEstimateService;
 import com.groupmart.service.InventoryService;
+import com.groupmart.service.NotificationService;
 import com.groupmart.service.OrderService;
 import com.groupmart.service.WalletService;
 
@@ -44,6 +49,10 @@ public class OrderServiceImpl implements OrderService {
     private final InventoryService inventoryService;
     private final CouponService couponService;
     private final WalletService walletService;
+    private final NotificationService notificationService;
+    private final OrderPaymentDetailsAssembler paymentDetailsAssembler;
+    private final AuditLogService auditLogService;
+    private final DeliveryEstimateService deliveryEstimateService;
 
     private static final BigDecimal TAX_RATE = new BigDecimal("0.08");
 
@@ -143,8 +152,10 @@ public class OrderServiceImpl implements OrderService {
                 .shippingPostalCode(postalCode)
                 .shippingCountry(country)
                 .couponCode(couponCode)
+                .shippingOptionId(request.getShippingOptionId())
                 .items(new ArrayList<>())
                 .build();
+        deliveryEstimateService.applyOnPlacement(order);
 
         Order savedOrder = orderRepository.save(order);
 
@@ -172,7 +183,19 @@ public class OrderServiceImpl implements OrderService {
         }
 
         cartService.clearCart(userEmail, sessionId);
-        return mapToOrderDto(savedOrder);
+
+        String total = OrderPaymentDetailsAssembler.money(savedOrder.getTotalAmount());
+        if (savedOrder.getPaymentStatus() == PaymentStatus.COMPLETED) {
+            notifyCustomer(savedOrder, "Payment received",
+                    "We received " + total + " by " + OrderPaymentDetailsAssembler.methodLabel(savedOrder.getPaymentMethod())
+                            + " for order " + orderNumber + ". The seller will confirm it shortly.",
+                    "PAYMENT_UPDATE");
+        } else {
+            notifyCustomer(savedOrder, "Order placed",
+                    "Order " + orderNumber + " was placed. Pay " + total + " in cash when it is delivered.",
+                    "ORDER_UPDATE");
+        }
+        return mapToOrderDtoWithPayments(savedOrder);
     }
 
     @Override
@@ -182,7 +205,7 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
 
         return orderRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
-                .map(this::mapToOrderDto)
+                .map(this::mapToOrderDtoWithPayments)
                 .collect(Collectors.toList());
     }
 
@@ -199,7 +222,7 @@ public class OrderServiceImpl implements OrderService {
             throw new ApiException("You are not authorized to view this order", HttpStatus.FORBIDDEN);
         }
 
-        return mapToOrderDto(order);
+        return mapToOrderDtoWithPayments(order);
     }
 
     @Override
@@ -221,10 +244,12 @@ public class OrderServiceImpl implements OrderService {
                     HttpStatus.BAD_REQUEST);
         }
 
-        order.setStatus(OrderStatus.CANCELLED);
-        if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
-            order.setPaymentStatus(PaymentStatus.REFUNDED);
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw new ApiException("This order has already been cancelled", HttpStatus.BAD_REQUEST);
         }
+
+        order.setStatus(OrderStatus.CANCELLED);
+        BigDecimal refund = refundIfPaid(order);
 
         for (OrderItem item : order.getItems()) {
             inventoryService.releaseStockForCancelledOrder(
@@ -234,7 +259,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order updated = orderRepository.save(order);
-        return mapToOrderDto(updated);
+        notifyCancelled(updated, refund, "You cancelled order " + orderNumber + ".");
+        return mapToOrderDtoWithPayments(updated);
     }
 
     @Override
@@ -255,6 +281,34 @@ public class OrderServiceImpl implements OrderService {
                 .collect(Collectors.toList());
 
         return merchantOrders.stream().map(this::mapToOrderDto).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderDto> getOrdersForSeller(String sellerEmail, List<String> orderNumbers) {
+        if (orderNumbers == null || orderNumbers.isEmpty()) {
+            return List.of();
+        }
+        User user = userRepository.findByEmail(sellerEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", sellerEmail));
+
+        SellerStore store = user.getRole() == Role.ROLE_ADMIN
+                ? null
+                : sellerStoreRepository.findByUserId(user.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
+
+        List<OrderDto> result = new ArrayList<>();
+        for (String orderNumber : orderNumbers) {
+            orderRepository.findByOrderNumber(orderNumber).ifPresent(order -> {
+                boolean allowed = store == null || order.getItems().stream()
+                        .anyMatch(item -> item.getSellerStore() != null
+                                && item.getSellerStore().getId().equals(store.getId()));
+                if (allowed) {
+                    result.add(mapToOrderDto(order));
+                }
+            });
+        }
+        return result;
     }
 
     @Override
@@ -297,7 +351,12 @@ public class OrderServiceImpl implements OrderService {
 
         order.setStatus(next);
 
+        if (next == OrderStatus.SHIPPED) {
+            deliveryEstimateService.applyOnShipped(order);
+        }
+
         if (next == OrderStatus.DELIVERED) {
+            order.setDeliveredAt(LocalDateTime.now());
             order.setPaymentStatus(PaymentStatus.COMPLETED);
 
             // Credit each seller store for their line items (after 15% platform fee inside WalletService)
@@ -317,10 +376,9 @@ public class OrderServiceImpl implements OrderService {
             );
         }
 
+        BigDecimal refund = BigDecimal.ZERO;
         if (next == OrderStatus.CANCELLED) {
-            if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
-                order.setPaymentStatus(PaymentStatus.REFUNDED);
-            }
+            refund = refundIfPaid(order);
             for (OrderItem item : order.getItems()) {
                 inventoryService.releaseStockForCancelledOrder(
                         item.getProduct().getId(),
@@ -329,8 +387,54 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        boolean cashCollected = next == OrderStatus.DELIVERED
+                && order.getPaymentMethod() == PaymentMethod.CASH_ON_DELIVERY;
         Order updated = orderRepository.save(order);
+        notifyStatusChange(updated, next, refund, cashCollected);
         return mapToOrderDto(updated);
+    }
+
+    @Override
+    @Transactional
+    public OrderDto refundOrder(String adminEmail, String orderNumber, BigDecimal amount, String reason) {
+        Order order = orderRepository.findByOrderNumber(orderNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Order", "orderNumber", orderNumber));
+
+        OrderPaymentDetailsDto details = paymentDetailsAssembler.build(order);
+        BigDecimal refundable = details.getNetPaid() != null ? details.getNetPaid() : BigDecimal.ZERO;
+        if (refundable.signum() <= 0) {
+            throw new ApiException(order.getPaymentStatus() == PaymentStatus.PENDING
+                    ? "This order has not been paid yet, so there is nothing to refund"
+                    : "This order has already been refunded in full", HttpStatus.BAD_REQUEST);
+        }
+
+        BigDecimal refund = (amount == null ? refundable : amount).setScale(2, RoundingMode.HALF_UP);
+        if (refund.signum() <= 0) {
+            throw new ApiException("A refund must be more than zero", HttpStatus.BAD_REQUEST);
+        }
+        if (refund.compareTo(refundable) > 0) {
+            throw new ApiException("The refund cannot exceed " + OrderPaymentDetailsAssembler.money(refundable)
+                    + ", the amount this customer still has paid", HttpStatus.BAD_REQUEST);
+        }
+
+        paymentDetailsAssembler.recordRefund(order, refund, "SANDBOX_ADMIN_REFUND: " + reason.trim());
+        boolean full = refund.compareTo(refundable) == 0;
+        if (full) {
+            order.setPaymentStatus(PaymentStatus.REFUNDED);
+            if (order.getStatus() != OrderStatus.DELIVERED) {
+                order.setStatus(OrderStatus.REFUNDED);
+            }
+        }
+        Order saved = orderRepository.save(order);
+
+        notifyCustomer(saved, full ? "Refund issued" : "Partial refund issued",
+                "GroupMart refunded " + OrderPaymentDetailsAssembler.money(refund) + " on order " + orderNumber
+                        + ". " + reason.trim(), "PAYMENT_UPDATE");
+        auditLogService.logActivity(adminEmail, "ORDER_REFUND", "ORDER",
+                "Refunded " + OrderPaymentDetailsAssembler.money(refund) + " of "
+                        + OrderPaymentDetailsAssembler.money(refundable) + " refundable on order " + orderNumber
+                        + ". Reason: " + reason.trim(), null);
+        return mapToOrderDtoWithPayments(saved);
     }
 
     @Override
@@ -352,6 +456,82 @@ public class OrderServiceImpl implements OrderService {
             orderNumber = "ORD-" + datePrefix + "-" + randomDigits;
         }
         return orderNumber;
+    }
+
+    /** Marks a paid order refunded and records the refund; returns the refunded amount (zero if unpaid). */
+    private BigDecimal refundIfPaid(Order order) {
+        if (order.getPaymentStatus() != PaymentStatus.COMPLETED) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal stillHeld = paymentDetailsAssembler.build(order).getNetPaid();
+        order.setPaymentStatus(PaymentStatus.REFUNDED);
+        if (stillHeld.signum() > 0) {
+            paymentDetailsAssembler.recordRefund(order, stillHeld, "SANDBOX_ORDER_CANCELLED_REFUND");
+        }
+        return stillHeld;
+    }
+
+    private void notifyStatusChange(Order order, OrderStatus status, BigDecimal refund, boolean cashCollected) {
+        String number = order.getOrderNumber();
+        switch (status) {
+            case PROCESSING -> notifyCustomer(order, "Order confirmed",
+                    "The seller accepted order " + number + " and is preparing it.", "ORDER_UPDATE");
+            case SHIPPED -> notifyCustomer(order, "Order shipped",
+                    "Order " + number + " is on its way.", "ORDER_UPDATE");
+            case DELIVERED -> {
+                if (cashCollected) {
+                    notifyCustomer(order, "Order delivered and paid",
+                            "Order " + number + " was delivered and your cash payment of "
+                                    + OrderPaymentDetailsAssembler.money(order.getTotalAmount()) + " was received.",
+                            "PAYMENT_UPDATE");
+                } else {
+                    notifyCustomer(order, "Order delivered", "Order " + number + " was delivered.", "ORDER_UPDATE");
+                }
+            }
+            case CANCELLED -> notifyCancelled(order, refund, "The seller cancelled order " + number + ".");
+            default -> { }
+        }
+    }
+
+    private void notifyCancelled(Order order, BigDecimal refund, String reason) {
+        if (refund.signum() > 0) {
+            notifyCustomer(order, "Refund issued",
+                    reason + " A refund of " + OrderPaymentDetailsAssembler.money(refund) + " was issued to your "
+                            + OrderPaymentDetailsAssembler.methodLabel(order.getPaymentMethod())
+                            + ". Refunds usually appear within 5-10 business days.",
+                    "PAYMENT_UPDATE");
+        } else {
+            notifyCustomer(order, "Order cancelled", reason + " You have not been charged.", "ORDER_UPDATE");
+        }
+    }
+
+    /** Shopper-facing name of the shipping speed chosen at checkout. */
+    static String shippingLabel(String shippingOptionId) {
+        if (shippingOptionId == null) {
+            return null;
+        }
+        return switch (shippingOptionId.toUpperCase()) {
+            case "PRIORITY_EXPRESS" -> "Priority Express";
+            case "OVERNIGHT_COURIER" -> "Overnight Courier";
+            case "STD_GROUND" -> "Standard Ground";
+            default -> shippingOptionId;
+        };
+    }
+
+    private void notifyCustomer(Order order, String title, String message, String type) {
+        notificationService.sendNotification(SendNotificationRequest.builder()
+                .userId(order.getUser().getId())
+                .title(title)
+                .message(message)
+                .type(type)
+                .link("/orders/confirmation/" + order.getOrderNumber())
+                .build());
+    }
+
+    private OrderDto mapToOrderDtoWithPayments(Order order) {
+        OrderDto dto = mapToOrderDto(order);
+        dto.setPaymentDetails(paymentDetailsAssembler.build(order));
+        return dto;
     }
 
     private OrderDto mapToOrderDto(Order order) {
@@ -385,6 +565,13 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return OrderDto.builder()
+                .shippingOptionId(order.getShippingOptionId())
+                .shippingOptionLabel(shippingLabel(order.getShippingOptionId()))
+                .estimatedDeliveryAt(order.getEstimatedDeliveryAt())
+                .estimatedDeliverySource(order.getEstimatedDeliverySource())
+                .estimatedDeliveryNote(order.getEstimatedDeliveryNote())
+                .shippedAt(order.getShippedAt())
+                .deliveredAt(order.getDeliveredAt())
                 .id(order.getId())
                 .orderNumber(order.getOrderNumber())
                 .userEmail(order.getUser().getEmail())
@@ -405,6 +592,8 @@ public class OrderServiceImpl implements OrderService {
                 .shippingPostalCode(order.getShippingPostalCode())
                 .shippingCountry(order.getShippingCountry())
                 .couponCode(order.getCouponCode())
+                .orderType(order.getOrderType() != null ? order.getOrderType() : OrderType.STANDARD)
+                .groupBuyGroupId(order.getGroupBuyGroupId())
                 .createdAt(order.getCreatedAt())
                 .build();
     }

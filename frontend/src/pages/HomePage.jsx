@@ -217,9 +217,9 @@ export default function HomePage() {
                   </p>
                 )}
                 <div className="flex items-baseline gap-3 font-mono">
-                  <span className="text-2xl font-black text-emerald-400">${slide.price}</span>
+                  <span className="text-2xl font-black text-emerald-400">৳{slide.price}</span>
                   {slide.compareAtPrice && (
-                    <span className="text-sm text-slate-500 line-through">${slide.compareAtPrice}</span>
+                    <span className="text-sm text-slate-500 line-through">৳{slide.compareAtPrice}</span>
                   )}
                 </div>
                 <div className="pt-2 flex flex-wrap items-center gap-4">
@@ -314,9 +314,9 @@ export default function HomePage() {
                   <div className="space-y-1 flex-1 min-w-0">
                     <p className="font-bold text-white text-xs line-clamp-1">{p.name}</p>
                     <div className="flex items-center gap-2 text-xs font-mono">
-                      <span className="text-emerald-400 font-extrabold">${p.price}</span>
+                      <span className="text-emerald-400 font-extrabold">৳{p.price}</span>
                       {p.compareAtPrice && (
-                        <span className="text-slate-500 line-through text-[11px]">${p.compareAtPrice}</span>
+                        <span className="text-slate-500 line-through text-[11px]">৳{p.compareAtPrice}</span>
                       )}
                     </div>
                     {pct != null && (
@@ -452,9 +452,9 @@ export default function HomePage() {
                     </div>
                     <div className="space-y-3 pt-2">
                       <div className="flex items-baseline gap-2 font-mono">
-                        <span className="text-xl font-black text-emerald-400">${product.price}</span>
+                        <span className="text-xl font-black text-emerald-400">৳{product.price}</span>
                         {product.compareAtPrice && (
-                          <span className="text-xs text-slate-500 line-through">${product.compareAtPrice}</span>
+                          <span className="text-xs text-slate-500 line-through">৳{product.compareAtPrice}</span>
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
@@ -507,7 +507,7 @@ export default function HomePage() {
                   </div>
                   <div className="space-y-1 min-w-0">
                     <p className="font-bold text-white text-xs line-clamp-1">{p.name}</p>
-                    <p className="text-emerald-400 font-mono font-extrabold text-xs">${p.price}</p>
+                    <p className="text-emerald-400 font-mono font-extrabold text-xs">৳{p.price}</p>
                     <button
                       onClick={() => addToCart(p.id || p, 1)}
                       className="text-[11px] text-nexus-400 font-bold hover:underline flex items-center gap-1"

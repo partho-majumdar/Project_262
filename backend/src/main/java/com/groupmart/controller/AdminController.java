@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.*;
 
 import com.groupmart.common.response.ApiResponse;
 import com.groupmart.dto.admin.*;
+import com.groupmart.dto.order.AdminRefundRequest;
 import com.groupmart.dto.order.OrderDto;
 import com.groupmart.dto.seller.SellerStoreDto;
 import com.groupmart.service.AdminService;
 import com.groupmart.service.OrderService;
+import com.groupmart.service.RagRetrievalService;
 
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +30,7 @@ public class AdminController {
 
     private final AdminService adminService;
     private final OrderService orderService;
+    private final RagRetrievalService ragRetrievalService;
 
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<AdminDashboardOverviewDto>> getDashboardOverview() {
@@ -74,5 +77,23 @@ public class AdminController {
     public ResponseEntity<ApiResponse<List<OrderDto>>> getAllOrders() {
         List<OrderDto> orders = orderService.getAllOrdersForAdmin();
         return ResponseEntity.ok(ApiResponse.success("All system orders retrieved", orders));
+    }
+
+    /** Refunds an order; an empty amount refunds everything the customer still has paid. */
+    @PostMapping("/orders/{orderNumber}/refund")
+    public ResponseEntity<ApiResponse<OrderDto>> refundOrder(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String orderNumber,
+            @Valid @RequestBody AdminRefundRequest request) {
+        OrderDto refunded = orderService.refundOrder(userDetails.getUsername(), orderNumber,
+                request.getAmount(), request.getReason());
+        return ResponseEntity.ok(ApiResponse.success("Refund issued", refunded));
+    }
+
+    /** Rebuilds the self-built RAG TF-IDF index from the current catalog (e.g. after a bulk import). */
+    @PostMapping("/ai/reindex")
+    public ResponseEntity<ApiResponse<String>> reindexAiKnowledgeBase() {
+        ragRetrievalService.rebuildIndex();
+        return ResponseEntity.ok(ApiResponse.success("RAG index rebuilt", "DONE"));
     }
 }

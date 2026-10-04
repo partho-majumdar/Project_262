@@ -3,8 +3,7 @@ import {
   ShieldCheck, 
   Users, 
   Store, 
-  Layers, 
-  DollarSign, 
+  Banknote, 
   Activity, 
   Search, 
   CheckCircle2, 
@@ -17,7 +16,6 @@ import {
   Plus,
   X,
   TrendingUp,
-  BarChart3,
   Award,
   Package,
   AlertTriangle,
@@ -30,7 +28,6 @@ import {
   RefreshCw,
   HardDrive,
   Mail,
-  MessageSquare,
   Key,
   Sliders,
   Calendar,
@@ -47,19 +44,78 @@ import {
   CheckCircle,
   CreditCard,
   Percent,
-  Play
+  Play,
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
+import { useAuth } from '../context/AuthContext';
+import { Roles } from '../constants/roles';
+import AdminGroupBuysTab from '../components/admin/groupbuy/AdminGroupBuysTab';
+import AdminWholesaleTab from '../components/admin/wholesale/AdminWholesaleTab';
+import FeatureAdminTab from '../components/admin/featureAdmin/FeatureAdminTab';
+import { FEATURE_CONFIGS } from '../components/admin/featureAdmin/featureConfigs';
+import AdminCollectiveTab from '../components/admin/collective/AdminCollectiveTab';
+import AdminGroupReverseTab from '../components/admin/groupr/AdminGroupReverseTab';
+import OrderGovernancePanel from '../components/admin/OrderGovernancePanel';
+import AdminAnalyticsEngine from '../components/admin/analytics/AdminAnalyticsEngine';
+import MarketplaceGmvAnalytics from '../components/admin/analytics/MarketplaceGmvAnalytics';
+import { exportAdminReport } from '../components/admin/adminReports';
+
+const ADMIN_TABS = [
+  'overview', 'sellers', 'customers', 'products', 'orders', 'group-buys', 'wholesale', 'group-reverse',
+  'analytics', 'ai_panel', 'finance', 'cms', 'support', 'security', 'reports', 'settings',
+  'mon-reverse-group-buying', 'mon-customer-lead-group-buying', 'mon-auctions', 'mon-group-buying-auctions',
+];
+
+/**
+ * The shared monitoring shell, one entry per feature that has no bespoke admin tab of its own.
+ * Wholesale keeps its dedicated tab, which links here for the panels it does not duplicate.
+ */
+const MONITORING_TABS = {
+  'mon-reverse-group-buying': 'reverse-group-buying',
+  'mon-customer-lead-group-buying': 'customer-lead-group-buying',
+  'mon-auctions': 'auctions',
+  'mon-group-buying-auctions': 'group-buying-auctions',
+};
 
 export default function AdminDashboardPage() {
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState('overview');
+  // The security tab renders the signed-in admin's own session, so it needs the current user.
+  const { user } = useAuth();
+
+  // The URL is the source of truth, so refresh, Back/Forward and shared links all land on the same tab.
+  // Notification links open a tab directly, e.g. ?tab=group-buys&view=disputes
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeAdminSubTab = ADMIN_TABS.includes(requestedTab) ? requestedTab : 'overview';
+
+  const setActiveAdminSubTab = (tab) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    if (tab !== 'group-buys' && tab !== 'wholesale') {
+      next.delete('view'); // the view section only means something on those tabs
+    }
+    setSearchParams(next);
+  };
+
+  const setGroupBuyView = (view) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'group-buys');
+    next.set('view', view);
+    setSearchParams(next);
+  };
+
+  const setWholesaleView = (view) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'wholesale');
+    next.set('view', view);
+    setSearchParams(next);
+  };
   const [overview, setOverview] = useState(null);
   const [usersPage, setUsersPage] = useState({ content: [], totalElements: 0 });
   const [sellersList, setSellersList] = useState([]);
   const [couponsList, setCouponsList] = useState([]);
   const [auditLogsPage, setAuditLogsPage] = useState({ content: [], totalElements: 0 });
   const [analyticsData, setAnalyticsData] = useState(null);
-  const [biDashboard, setBiDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -77,7 +133,6 @@ export default function AdminDashboardPage() {
   const [sellerSearch, setSellerSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [orderSearch, setOrderSearch] = useState('');
   const [auditQuery, setAuditQuery] = useState('');
 
   // Financial controls
@@ -85,11 +140,7 @@ export default function AdminDashboardPage() {
   const [withholdingTaxRate, setWithholdingTaxRate] = useState(18.0);
   
   // Support helpdesk
-  const [tickets, setTickets] = useState([
-    { id: 'TCK-9812', requester: 'customer@groupmart.com', subject: 'Disputed delivery charge on Express tier', status: 'OPEN', priority: 'HIGH', date: '2026-07-29' },
-    { id: 'TCK-4321', requester: 'seller@groupmart.com', subject: 'KYC Verification documentation clarification', status: 'RESOLVED', priority: 'MEDIUM', date: '2026-07-25' },
-    { id: 'TCK-0012', requester: 'buyer2@example.com', subject: 'Late refund on canceled tech order', status: 'OPEN', priority: 'HIGH', date: '2026-08-01' }
-  ]);
+  const [tickets, setTickets] = useState([]);
   
   const [faqs, setFaqs] = useState([
     { id: 1, question: 'How long does KYC verification take?', answer: 'It is typically audited and approved within 24-48 business hours.', category: 'Merchant' },
@@ -98,15 +149,10 @@ export default function AdminDashboardPage() {
   const [newFaq, setNewFaq] = useState({ question: '', answer: '', category: 'General' });
 
   // CMS/Content items
-  const [banners, setBanners] = useState([
-    { id: '1', title: 'Summer Tech Blowout', subtitle: 'Up to 40% off on Laptops & Accessories', buttonText: 'Shop Now', imageUrl: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=600' },
-    { id: '2', title: 'AI Workspace Revolution', subtitle: 'Equip your home office with predictive hardware', buttonText: 'Explore AI', imageUrl: 'https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=600' }
-  ]);
+  const [banners, setBanners] = useState([]);
   const [newBanner, setNewBanner] = useState({ title: '', subtitle: '', buttonText: 'Shop Now', imageUrl: '' });
 
-  const [announcements, setAnnouncements] = useState([
-    { id: 1, text: 'Scheduled Tomcat maintenance window: Sunday at 02:00 UTC.', date: '2026-08-01', active: true }
-  ]);
+  const [announcements, setAnnouncements] = useState([]);
   const [newAnnouncement, setNewAnnouncement] = useState('');
 
   // AI Panel interactive controls
@@ -115,38 +161,77 @@ export default function AdminDashboardPage() {
   const [scanReviewText, setScanReviewText] = useState('');
   const [fraudScoreResult, setFraudScoreResult] = useState(null);
 
-  // Settings states
-  const [paymentSettings, setPaymentSettings] = useState({ stripe: true, paypal: true, commission: 15.0, status: 'Production' });
-  const [shippingTier, setShippingTier] = useState('Flat Rate $5.00');
+  // Settings states. These are seeded with concrete defaults rather than null so the
+  // settings and finance panels can never dereference an unpopulated object.
+  const [paymentSettings, setPaymentSettings] = useState({ stripe: true, paypal: true, creditCard: true });
+  const [shippingTier, setShippingTier] = useState('Flat Rate ৳5.00');
+  const [settingsStatus, setSettingsStatus] = useState({ loading: false, saving: false, error: '', saved: false });
 
   // Categories & Brands local mocks/modifications
-  const [categories, setCategories] = useState([
-    { id: 'cat-1', name: 'Electronics', slug: 'electronics', productCount: 42 },
-    { id: 'cat-2', name: 'Clothing', slug: 'clothing', productCount: 28 },
-    { id: 'cat-3', name: 'Home Appliances', slug: 'home-appliances', productCount: 15 }
-  ]);
+  const [categories, setCategories] = useState([]);
   const [newCategory, setNewCategory] = useState({ name: '', slug: '' });
+
+  // Maps the /admin/settings/map payload onto the form state used by the
+  // settings and finance panels. Missing keys keep their existing value.
+  const applySettings = (settings) => {
+    const asBool = (key, fallback) => {
+      const raw = settings[key];
+      if (raw === undefined || raw === null || raw === '') return fallback;
+      return String(raw).toLowerCase() === 'true';
+    };
+    const asNumber = (key, fallback) => {
+      const parsed = parseFloat(settings[key]);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
+    setPaymentSettings(prev => ({
+      stripe: asBool('payment.stripe.enabled', prev.stripe),
+      paypal: asBool('payment.paypal.enabled', prev.paypal),
+      creditCard: asBool('payment.creditcard.enabled', prev.creditCard),
+    }));
+    setShippingTier(settings['shipping.tier'] || 'Flat Rate ৳5.00');
+    setCommissionRate(asNumber('commission.rate', 15.0));
+    setWithholdingTaxRate(asNumber('withholding.tax.rate', 18.0));
+  };
+
+  const saveSettings = async (overrides = {}) => {
+    const payload = {
+      'payment.stripe.enabled': String(overrides.stripe ?? paymentSettings.stripe),
+      'payment.paypal.enabled': String(overrides.paypal ?? paymentSettings.paypal),
+      'payment.creditcard.enabled': String(overrides.creditCard ?? paymentSettings.creditCard),
+      'shipping.tier': overrides.shippingTier ?? shippingTier,
+      'commission.rate': String(overrides.commissionRate ?? commissionRate),
+      'withholding.tax.rate': String(overrides.withholdingTaxRate ?? withholdingTaxRate),
+    };
+
+    setSettingsStatus({ loading: false, saving: true, error: '', saved: false });
+    try {
+      const res = await axiosClient.put('/admin/settings', payload);
+      applySettings(res?.data || {});
+      setSettingsStatus({ loading: false, saving: false, error: '', saved: true });
+    } catch (err) {
+      setSettingsStatus({
+        loading: false,
+        saving: false,
+        error: err.message || 'Failed to save platform settings',
+        saved: false,
+      });
+    }
+  };
 
   const initData = async () => {
     setLoading(true);
     try {
-      const [overRes, usersRes, sellersRes, couponsRes, auditRes, anaRes, biRes, prodRes, ordRes] = await Promise.all([
-        axiosClient.get('/admin/dashboard').catch(() => ({ totalPlatformRevenue: 1245500.0, totalUsers: 85, totalSellers: 8, pendingSellerVerifications: 2 })),
+      const [overRes, usersRes, sellersRes, couponsRes, auditRes, anaRes, prodRes, ordRes, setRes] = await Promise.all([
+        axiosClient.get('/admin/dashboard').catch(() => ({})),
         axiosClient.get('/admin/users?page=0&size=50').catch(() => ({ content: [], totalElements: 0 })),
         axiosClient.get('/admin/sellers').catch(() => ([])),
         axiosClient.get('/admin/coupons').catch(() => ([])),
         axiosClient.get('/admin/audit-logs?page=0&size=50').catch(() => ({ content: [], totalElements: 0 })),
-        axiosClient.get('/admin/analytics').catch(() => ({ totalRevenue: 1245500.0, averageOrderValue: 245.5 })),
-        axiosClient.get('/admin/bi-analytics/dashboard').catch(() => ({
-          forecastGrowthRate: 28.5,
-          projectedMonthlyRevenue: 73800.00,
-          revenueForecasts: [],
-          lowStockPredictions: [],
-          fraudAnomalies: [],
-          aiBusinessSuggestions: ['Recommend adjusting commission parameters.', 'Increase server capacities during weekend sales.']
-        })),
+        axiosClient.get('/admin/analytics').catch(() => ({})),
         axiosClient.get('/products?size=100').catch(() => ({ content: [] })),
-        axiosClient.get('/admin/orders').catch(() => ({ data: [] }))
+        axiosClient.get('/admin/orders').catch(() => ({ data: [] })),
+        axiosClient.get('/admin/settings/map').catch(() => ({}))
       ]);
 
       setOverview(overRes.data || overRes);
@@ -155,12 +240,13 @@ export default function AdminDashboardPage() {
       setCouponsList(couponsRes.data || couponsRes || []);
       setAuditLogsPage(auditRes.data || auditRes);
       setAnalyticsData(anaRes.data || anaRes);
-      setBiDashboard(biRes.data || biRes);
 
       // Extract products and orders list safely
       const prodArray = prodRes.data?.content || prodRes.content || prodRes.data || [];
       setAllProducts(prodArray);
       setAllOrders(ordRes.data || ordRes || []);
+
+      applySettings(setRes.data || setRes || {});
 
     } catch (err) {
       setError(err.message || 'Failed to initialize administrative panels');
@@ -218,8 +304,21 @@ export default function AdminDashboardPage() {
   };
 
   // Export Reports
-  const handleExportReport = (type, format) => {
-    alert(`Generating ${type} Report in ${format} format... Your download will begin shortly.`);
+  const [reportMessage, setReportMessage] = useState('');
+  const [reportError, setReportError] = useState('');
+  const [reportBusy, setReportBusy] = useState('');
+
+  const handleExportReport = async (type, format) => {
+    setReportBusy(`${type}:${format}`);
+    setReportError('');
+    setReportMessage('');
+    try {
+      setReportMessage(await exportAdminReport(type, format, { overview }));
+    } catch (err) {
+      setReportError(err?.message || `Could not build the ${type} report.`);
+    } finally {
+      setReportBusy('');
+    }
   };
 
   // Audit Logs Search
@@ -305,7 +404,7 @@ export default function AdminDashboardPage() {
   const runAiInsights = () => {
     setAiAnalyzing(true);
     setTimeout(() => {
-      setAiAnalysisResult('Based on seasonal trend signals and active carts: (1) Platform GMV is projected to grow by 24.8% next month. (2) Recommend scheduling 15% discount coupons on category Electronics to optimize high stock inventory. (3) 2 accounts flagged with anomaly activity risk.');
+      setAiAnalysisResult('AI insights are generated server-side. Wire the /admin/bi-analytics/insights endpoint to receive live predictions.');
       setAiAnalyzing(false);
     }, 1500);
   };
@@ -313,7 +412,7 @@ export default function AdminDashboardPage() {
   const handleScanReview = (e) => {
     e.preventDefault();
     if (!scanReviewText.trim()) return;
-    alert('Scanning review text with NLP Sentiment Classifier... Result: Real Review (94.2% organic confidence score)');
+    alert('Review classification is generated server-side via the AI Vision/NLP pipeline. Use /admin/reviews/scan to invoke it.');
     setScanReviewText('');
   };
 
@@ -332,8 +431,8 @@ export default function AdminDashboardPage() {
     s.ownerEmail?.toLowerCase().includes(sellerSearch.toLowerCase())
   );
 
-  const filteredCustomers = (usersPage.content || []).filter(u => 
-    u.role === 'ROLE_CUSTOMER' && (
+  const filteredCustomers = (usersPage.content || []).filter(u =>
+    u.role === Roles.CUSTOMER && (
       u.firstName?.toLowerCase().includes(customerSearch.toLowerCase()) ||
       u.lastName?.toLowerCase().includes(customerSearch.toLowerCase()) ||
       u.email?.toLowerCase().includes(customerSearch.toLowerCase())
@@ -345,140 +444,8 @@ export default function AdminDashboardPage() {
     p.sku?.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const filteredOrders = allOrders.filter(o =>
-    o.orderNumber?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-    o.userId?.toLowerCase().includes(orderSearch.toLowerCase())
-  );
-
   return (
-    <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 pb-12">
-      
-      {/* 1. SIDEBAR NAVIGATION PANELS (13 TABS) */}
-      <aside className="w-full lg:w-64 shrink-0 bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-5">
-        <div className="border-b border-slate-800 pb-3 flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-rose-500" />
-          <h2 className="text-xs font-black uppercase text-rose-400 tracking-widest">Platform Command</h2>
-        </div>
-        
-        <nav className="flex flex-row lg:flex-col flex-wrap lg:space-y-1 gap-1 max-h-[60vh] lg:max-h-none overflow-y-auto pr-1">
-          <button
-            onClick={() => setActiveAdminSubTab('overview')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'overview' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" /> Dashboard Overview
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('sellers')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'sellers' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Store className="w-3.5 h-3.5" /> Seller Hub
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('customers')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'customers' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" /> Customers Directory
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('products')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'products' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" /> Product Management
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('orders')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'orders' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" /> Order Governance
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('analytics')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'analytics' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" /> Analytics Engine
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('ai_panel')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'ai_panel' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Brain className="w-3.5 h-3.5 text-rose-450 animate-pulse" /> AI Predict panel
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('finance')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'finance' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <DollarSign className="w-3.5 h-3.5" /> Finance & Wallets
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('cms')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'cms' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" /> Content Control (CMS)
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('support')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'support' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" /> Helpdesk Tickets
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('security')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'security' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5 text-rose-450" /> Security Center
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('reports')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'reports' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" /> Consolidated Reports
-          </button>
-
-          <button
-            onClick={() => setActiveAdminSubTab('settings')}
-            className={`w-full text-left px-3.5 py-2 rounded-xl font-bold text-[11px] flex items-center gap-2.5 transition ${
-              activeAdminSubTab === 'settings' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" /> Platform Settings
-          </button>
-        </nav>
-      </aside>
+    <div className="pb-12">
 
       {/* 2. MAIN ADMIN TAB CONTENT PANELS */}
       <div className="flex-1 space-y-6">
@@ -489,13 +456,54 @@ export default function AdminDashboardPage() {
             <h1 className="text-xl font-black text-white tracking-tight">Executive Management Terminal</h1>
             <p className="text-xs text-slate-400">Database Context: Spring Boot | Active Audit Logs: {auditLogsPage.totalElements}</p>
           </div>
-          <button
-            onClick={() => handleExportReport('Platform', 'CSV')}
-            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition"
-          >
-            <Download className="w-4 h-4" /> Download platform report
-          </button>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleExportReport('Platform', 'CSV')}
+                disabled={reportBusy.startsWith('Platform')}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition"
+              >
+                <Download className="w-4 h-4" />
+                {reportBusy === 'Platform:CSV' ? 'Building report…' : 'Download platform report'}
+              </button>
+              <button
+                onClick={() => handleExportReport('Platform', 'PDF')}
+                disabled={reportBusy.startsWith('Platform')}
+                className="px-3 py-2 bg-slate-900 border border-slate-700 hover:text-white disabled:opacity-60 text-slate-300 text-xs font-bold rounded-xl transition"
+                title="Open a printable version"
+              >
+                Print
+              </button>
+            </div>
+            {(reportMessage || reportError) && (
+              <p className={`text-[11px] text-right ${reportError ? 'text-rose-300' : 'text-emerald-300'}`}>
+                {reportError || reportMessage}
+              </p>
+            )}
+          </div>
         </div>
+
+        {activeAdminSubTab === 'group-buys' && (
+          <AdminGroupBuysTab
+            initialView={searchParams.get('view') || undefined}
+            onViewChange={setGroupBuyView}
+          />
+        )}
+
+        {activeAdminSubTab === 'wholesale' && (
+          <AdminWholesaleTab
+            initialView={searchParams.get('view') || undefined}
+            onViewChange={setWholesaleView}
+          />
+        )}
+
+        {activeAdminSubTab === 'collective' && <AdminCollectiveTab />}
+
+        {activeAdminSubTab === 'group-reverse' && <AdminGroupReverseTab />}
+
+        {MONITORING_TABS[activeAdminSubTab] && (
+          <FeatureAdminTab config={FEATURE_CONFIGS[MONITORING_TABS[activeAdminSubTab]]} />
+        )}
 
         {/* TAB 1: OVERVIEW DASHBOARD */}
         {activeAdminSubTab === 'overview' && (
@@ -506,7 +514,7 @@ export default function AdminDashboardPage() {
               <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
                 <div>
                   <span className="text-[10px] uppercase font-bold text-slate-400">Total Customers</span>
-                  <p className="text-2xl font-black text-white mt-1">{(usersPage.content || []).filter(u => u.role === 'ROLE_CUSTOMER').length + 42}</p>
+                  <p className="text-2xl font-black text-white mt-1">{(usersPage.content || []).filter(u => u.role === 'ROLE_CUSTOMER').length}</p>
                   <span className="text-[9px] text-emerald-400 mt-0.5 block">▲ +8% Growth</span>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-rose-950 border border-rose-800 flex items-center justify-center text-rose-450">
@@ -539,8 +547,8 @@ export default function AdminDashboardPage() {
               <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
                 <div>
                   <span className="text-[10px] uppercase font-bold text-slate-400">Total Orders</span>
-                  <p className="text-2xl font-black text-white mt-1">{allOrders.length + 250}</p>
-                  <span className="text-[9px] text-amber-400 mt-0.5 block">Delivered: {allOrders.filter(o => o.status === 'DELIVERED').length + 215}</span>
+                  <p className="text-2xl font-black text-white mt-1">{allOrders.length}</p>
+                  <span className="text-[9px] text-amber-400 mt-0.5 block">Delivered: {allOrders.filter(o => o.status === 'DELIVERED').length}</span>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-950 border border-amber-900 flex items-center justify-center text-amber-450">
                   <Sliders className="w-5 h-5" />
@@ -550,11 +558,11 @@ export default function AdminDashboardPage() {
               <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
                 <div>
                   <span className="text-[10px] uppercase font-bold text-slate-400">Platform Revenue</span>
-                  <p className="text-2xl font-black text-white mt-1">${(overview?.totalPlatformRevenue || 1245500.0).toLocaleString()}</p>
-                  <span className="text-[9px] text-emerald-400 mt-0.5 block">Commission earned: ${(overview?.totalPlatformRevenue * 0.15 || 186825.0).toLocaleString()}</span>
+                  <p className="text-2xl font-black text-white mt-1">৳{(overview?.totalPlatformRevenue || 0).toLocaleString()}</p>
+                  <span className="text-[9px] text-emerald-400 mt-0.5 block">Commission earned: ৳{((overview?.totalPlatformRevenue || 0) * 0.15).toLocaleString()}</span>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-blue-950 border border-blue-900 flex items-center justify-center text-blue-450">
-                  <DollarSign className="w-5 h-5" />
+                  <Banknote className="w-5 h-5" />
                 </div>
               </div>
 
@@ -563,9 +571,9 @@ export default function AdminDashboardPage() {
                   <span className="text-[10px] uppercase font-bold text-slate-400">Live Traffic</span>
                   <p className="text-2xl font-black text-emerald-400 mt-1 flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                    <span>34 Active</span>
+                    <span>—</span>
                   </p>
-                  <span className="text-[9px] text-slate-400 mt-0.5 block">Live Visitors right now</span>
+                  <span className="text-[9px] text-slate-400 mt-0.5 block">Live visitor analytics not connected</span>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
                   <Activity className="w-5 h-5" />
@@ -605,19 +613,8 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Quick SVG sales graph */}
-            <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-xs font-black uppercase text-rose-400 tracking-wider font-bold">Marketplace sales performance (GMV)</h3>
-              <div className="h-40 w-full flex items-end justify-between border-b border-slate-850 pb-2">
-                {[150, 190, 240, 290, 310, 390, 420, 480, 520, 680, 720, 890].map((val, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center group">
-                    <span className="opacity-0 group-hover:opacity-100 text-[9px] text-slate-200 transition font-mono">${val * 10}</span>
-                    <div className="w-6 bg-gradient-to-t from-rose-700 to-rose-500 rounded-t shadow-lg" style={{ height: `${(val / 900) * 110}px` }} />
-                    <span className="text-[9px] text-slate-500 mt-1 font-bold">Month {idx + 1}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Marketplace GMV: one server rollup over the orders table, charted in full. */}
+            <MarketplaceGmvAnalytics />
 
           </div>
         )}
@@ -659,7 +656,7 @@ export default function AdminDashboardPage() {
                         </button>
                       </td>
                       <td className="p-3 font-mono text-indigo-300">{s.ownerEmail}</td>
-                      <td className="p-3 text-slate-400">29AAAAA1111A1Z{s.id.charAt(0)}</td>
+                      <td className="p-3 text-slate-400">{s.taxId || 'Not provided'}</td>
                       <td className="p-3">
                         <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
                           s.verified ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'
@@ -703,12 +700,12 @@ export default function AdminDashboardPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <p className="text-slate-400">Total Products List: <strong className="text-white">18 active</strong></p>
-                    <p className="text-slate-400">Sales commission fee: <strong className="text-white">15.0%</strong></p>
+                    <p className="text-slate-400">Store Slug: <strong className="text-white">{selectedSellerProfile.storeSlug || '—'}</strong></p>
+                    <p className="text-slate-400">Store Rating: <strong className="text-amber-400">{Number(selectedSellerProfile.rating || 0).toFixed(1)} / 5.0 ★</strong></p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-slate-400">KYC Status ID: <strong className="text-emerald-400">Active Approved</strong></p>
-                    <p className="text-slate-400">Merchant rating: <strong className="text-amber-400">4.8 / 5.0 ★</strong></p>
+                    <p className="text-slate-400">Total Sales: <strong className="text-emerald-400">{selectedSellerProfile.totalSales ?? 0}</strong></p>
+                    <p className="text-slate-400">Tax ID: <strong className="text-slate-200">{selectedSellerProfile.taxId || 'Not provided'}</strong></p>
                   </div>
                 </div>
               </div>
@@ -846,7 +843,7 @@ export default function AdminDashboardPage() {
                       <td className="p-3 font-bold text-white">{p.name}</td>
                       <td className="p-3 font-mono text-slate-450">{p.sku}</td>
                       <td className="p-3 font-bold text-rose-350">{p.sellerStoreName || 'Nexus Store'}</td>
-                      <td className="p-3 font-mono font-bold">${p.price}</td>
+                      <td className="p-3 font-mono font-bold">৳{p.price}</td>
                       <td className="p-3">
                         <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
                           p.active ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
@@ -935,132 +932,16 @@ export default function AdminDashboardPage() {
 
         {/* TAB 5: ORDER GOVERNANCE */}
         {activeAdminSubTab === 'orders' && (
-          <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-3">
-              <h3 className="text-xs font-black uppercase text-rose-400 tracking-wider font-bold">Order Registry & Invoicing</h3>
-              <div className="relative w-full sm:w-64">
-                <input
-                  type="text"
-                  placeholder="Search by order number..."
-                  value={orderSearch}
-                  onChange={(e) => setOrderSearch(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 pl-9 text-xs text-slate-100"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-550 absolute left-3 top-2.5" />
-              </div>
-            </div>
-
-            <div className="overflow-x-auto text-xs">
-              <table className="w-full text-left text-slate-300">
-                <thead className="bg-slate-900 text-slate-400 font-bold border-b border-slate-800">
-                  <tr>
-                    <th className="p-3">Order Code</th>
-                    <th className="p-3">Customer ID</th>
-                    <th className="p-3">Invoice Subtotal</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3 text-right">Fulfillment Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {filteredOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-slate-900/40">
-                      <td className="p-3 font-bold text-white">{o.orderNumber}</td>
-                      <td className="p-3 font-mono text-indigo-300 truncate max-w-[120px]">{o.userId}</td>
-                      <td className="p-3 font-bold">${o.totalAmount}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                          o.status === 'DELIVERED' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
-                          'bg-amber-950 text-amber-300 border border-amber-800'
-                        }`}>
-                          {o.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right space-x-2">
-                        <button
-                          onClick={() => alert(`Billing refund processed for Order: ${o.orderNumber}`)}
-                          className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold"
-                        >
-                          Approve Refund
-                        </button>
-                        <button
-                          onClick={() => alert(`Invoice PDF generated & download started for Order: ${o.orderNumber}`)}
-                          className="p-1.5 bg-slate-900 border border-slate-800 text-slate-300 hover:text-white rounded"
-                          title="Download Invoice"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredOrders.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="p-4 text-center text-slate-500 font-medium">No order files recorded in workspace repository.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <OrderGovernancePanel
+            orders={allOrders}
+            onOrderUpdated={(updated) =>
+              setAllOrders((prev) => prev.map((o) => (o.orderNumber === updated.orderNumber ? { ...o, ...updated } : o)))
+            }
+          />
         )}
 
         {/* TAB 6: ANALYTICS ENGINE */}
-        {activeAdminSubTab === 'analytics' && (
-          <div className="space-y-6">
-            <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-xs font-black uppercase text-rose-450 tracking-wider font-bold">Category sales performance distribution</h3>
-              
-              {/* Interactive Multi-chart dashboard */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-350">
-                <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
-                  <span className="font-bold text-white block">Marketplace Category Market Shares</span>
-                  <div className="space-y-2.5">
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span>Consumer Electronics</span>
-                        <strong>45%</strong>
-                      </div>
-                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
-                        <div className="bg-rose-500 h-full rounded-full" style={{ width: '45%' }} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span>Fashion & Apparel</span>
-                        <strong>30%</strong>
-                      </div>
-                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
-                        <div className="bg-indigo-500 h-full rounded-full" style={{ width: '30%' }} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span>Kitchen Appliances</span>
-                        <strong>25%</strong>
-                      </div>
-                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
-                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: '25%' }} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
-                  <span className="font-bold text-white block">Customer Acquisition Growth</span>
-                  <div className="h-28 w-full flex items-end justify-between border-b border-slate-800 pb-1 pt-4">
-                    {[34, 52, 68, 79, 95, 120, 145].map((val, idx) => (
-                      <div key={idx} className="flex-1 flex flex-col items-center">
-                        <div className="w-4 bg-indigo-600 rounded-t" style={{ height: `${(val / 150) * 80}px` }} />
-                        <span className="text-[9px] text-slate-500 mt-1 font-mono">Wk {idx+88}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeAdminSubTab === 'analytics' && <AdminAnalyticsEngine />}
 
         {/* TAB 7: AI PREDICTIVE PANEL */}
         {activeAdminSubTab === 'ai_panel' && (
@@ -1168,10 +1049,11 @@ export default function AdminDashboardPage() {
 
                   <button
                     type="button"
-                    onClick={() => alert(`Platform Commission saved to: ${commissionRate}%`)}
-                    className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl"
+                    onClick={() => saveSettings()}
+                    disabled={settingsStatus.saving}
+                    className="w-full py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl"
                   >
-                    Save commission Rules
+                    {settingsStatus.saving ? 'Saving commission...' : 'Save commission Rules'}
                   </button>
                 </div>
               </div>
@@ -1182,28 +1064,10 @@ export default function AdminDashboardPage() {
                 <div className="space-y-3">
                   <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
                     <div>
-                      <span className="font-bold text-white block">TechHub Store</span>
-                      <span className="text-[10px] text-slate-500 block">Requested Amount: $1,420.00</span>
+                      <span className="font-bold text-white block">Pending Payout Requests</span>
+                      <span className="text-[10px] text-slate-500 block">Connect payout API to view seller requests</span>
                     </div>
-                    <button
-                      onClick={() => alert('Payout authorized and released!')}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold"
-                    >
-                      Authorize Release
-                    </button>
-                  </div>
-
-                  <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-white block">Fashion Outfitters</span>
-                      <span className="text-[10px] text-slate-500 block">Requested Amount: $980.00</span>
-                    </div>
-                    <button
-                      onClick={() => alert('Payout authorized and released!')}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold"
-                    >
-                      Authorize Release
-                    </button>
+                    <span className="text-[10px] text-slate-500">No data</span>
                   </div>
                 </div>
               </div>
@@ -1458,7 +1322,7 @@ export default function AdminDashboardPage() {
               <div className="space-y-2">
                 <div className="p-3 bg-slate-950/50 rounded-xl flex justify-between items-center">
                   <div>
-                    <span className="text-white font-semibold font-mono block">JWT-Session: admin@groupmart.com</span>
+                    <span className="text-white font-semibold font-mono block">JWT-Session: {user?.email || 'active-session'}</span>
                     <span className="text-[9px] text-slate-500">Device: Windows 11 / Chrome browser | Session expiry: 24 hours</span>
                   </div>
                   <span className="px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[10px] border border-emerald-900 font-bold">Active</span>
@@ -1472,7 +1336,7 @@ export default function AdminDashboardPage() {
         {activeAdminSubTab === 'reports' && (
           <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
             <h3 className="text-sm font-black uppercase text-rose-450 tracking-wider">Reports & Statements Exporter</h3>
-            <p className="text-xs text-slate-400">Generate and download structured CSV sheets, formatted PDF invoices, or Excel sheets containing complete marketplace parameter sets.</p>
+            <p className="text-xs text-slate-400">Download a CSV of live marketplace data, or open a printable version to save as PDF. Reports cover complete marketplace parameter sets.</p>
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 text-xs">
               <div className="p-5 bg-slate-900 border border-slate-850 rounded-2xl text-center space-y-3">
@@ -1498,7 +1362,7 @@ export default function AdminDashboardPage() {
                 <span className="font-bold text-white block">Order & Transaction Logs</span>
                 <div className="flex justify-center gap-2">
                   <button onClick={() => handleExportReport('Transactions', 'CSV')} className="px-2.5 py-1 bg-slate-950 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white rounded">CSV</button>
-                  <button onClick={() => handleExportReport('Transactions', 'Excel')} className="px-2.5 py-1 bg-slate-950 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white rounded">Excel</button>
+                  <button onClick={() => handleExportReport('Transactions', 'PDF')} className="px-2.5 py-1 bg-slate-950 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white rounded">PDF</button>
                 </div>
               </div>
             </div>
@@ -1508,8 +1372,26 @@ export default function AdminDashboardPage() {
         {/* TAB 13: PLATFORM SETTINGS */}
         {activeAdminSubTab === 'settings' && (
           <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-6 text-xs text-slate-300">
-            <h3 className="text-sm font-black uppercase text-rose-450 tracking-wider">Nexus platform configuration</h3>
-            
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-black uppercase text-rose-450 tracking-wider">Nexus platform configuration</h3>
+              <div className="flex items-center gap-3">
+                {settingsStatus.saved && !settingsStatus.saving && (
+                  <span className="text-[10px] font-bold text-emerald-400">SAVED</span>
+                )}
+                {settingsStatus.error && (
+                  <span className="text-[10px] font-bold text-rose-400">{settingsStatus.error}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => saveSettings()}
+                  disabled={settingsStatus.saving}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl"
+                >
+                  {settingsStatus.saving ? 'Saving...' : 'Save All Settings'}
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="p-5 bg-slate-900 border border-slate-850 rounded-2xl space-y-4">
                 <span className="font-bold text-white block">Active Payment Gateways</span>
@@ -1517,6 +1399,7 @@ export default function AdminDashboardPage() {
                   <div className="flex justify-between items-center">
                     <span>Stripe (Credit / Debit Card)</span>
                     <button
+                      type="button"
                       onClick={() => setPaymentSettings(prev => ({ ...prev, stripe: !prev.stripe }))}
                       className={`px-3 py-1 text-[10px] font-bold rounded ${
                         paymentSettings.stripe ? 'bg-emerald-950 text-emerald-350 border border-emerald-900' : 'bg-slate-950 text-slate-500'
@@ -1529,12 +1412,26 @@ export default function AdminDashboardPage() {
                   <div className="flex justify-between items-center pt-2 border-t border-slate-850">
                     <span>PayPal Sandbox Integration</span>
                     <button
+                      type="button"
                       onClick={() => setPaymentSettings(prev => ({ ...prev, paypal: !prev.paypal }))}
                       className={`px-3 py-1 text-[10px] font-bold rounded ${
-                        paymentSettings.paypal ? 'bg-emerald-950 text-emerald-350 border border-emerald-900' : 'bg-slate-950 text-slate-550'
+                        paymentSettings.paypal ? 'bg-emerald-950 text-emerald-350 border border-emerald-900' : 'bg-slate-950 text-slate-500'
                       }`}
                     >
                       {paymentSettings.paypal ? 'ACTIVE' : 'INACTIVE'}
+                    </button>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-850">
+                    <span>Direct Credit Card Checkout</span>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentSettings(prev => ({ ...prev, creditCard: !prev.creditCard }))}
+                      className={`px-3 py-1 text-[10px] font-bold rounded ${
+                        paymentSettings.creditCard ? 'bg-emerald-950 text-emerald-350 border border-emerald-900' : 'bg-slate-950 text-slate-500'
+                      }`}
+                    >
+                      {paymentSettings.creditCard ? 'ACTIVE' : 'INACTIVE'}
                     </button>
                   </div>
                 </div>
@@ -1550,16 +1447,18 @@ export default function AdminDashboardPage() {
                       onChange={(e) => setShippingTier(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
                     >
-                      <option value="Flat Rate $5.00">Flat Rate $5.00</option>
+                      <option value="Flat Rate ৳5.00">Flat Rate ৳5.00</option>
                       <option value="Calculated Carrier Live rates">Carrier Live Rates (FedEx / UPS)</option>
-                      <option value="Free Shipping Tier">Free Shipping over $100</option>
+                      <option value="Free Shipping Tier">Free Shipping over ৳100</option>
                     </select>
                   </div>
                   <button
-                    onClick={() => alert(`Platform shipping rule configured to: ${shippingTier}`)}
-                    className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl"
+                    type="button"
+                    onClick={() => saveSettings({ shippingTier })}
+                    disabled={settingsStatus.saving}
+                    className="w-full py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl"
                   >
-                    Save Fulfillment Rules
+                    {settingsStatus.saving ? 'Saving...' : 'Save Fulfillment Rules'}
                   </button>
                 </div>
               </div>
@@ -1623,9 +1522,9 @@ export default function AdminDashboardPage() {
                   onChange={(e) => setSelectedUser({ ...selectedUser, role: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 font-bold"
                 >
-                  <option value="ROLE_CUSTOMER">ROLE_CUSTOMER (Marketplace Customer)</option>
-                  <option value="ROLE_SELLER">ROLE_SELLER (Merchant Seller)</option>
-                  <option value="ROLE_ADMIN">ROLE_ADMIN (Super Administrator)</option>
+                  <option value="ROLE_CUSTOMER">Customer (Marketplace Buyer)</option>
+                  <option value="ROLE_SELLER">Seller (Merchant)</option>
+                  <option value="ROLE_ADMIN">Administrator</option>
                 </select>
               </div>
 

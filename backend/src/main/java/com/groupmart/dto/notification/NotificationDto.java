@@ -18,6 +18,8 @@ public class NotificationDto {
     private String title;
     private String message;
     private String type;
+    private String category;
+    private String categoryLabel;
     private String link;
     private boolean read;
     private LocalDateTime createdAt;

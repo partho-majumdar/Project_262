@@ -8,9 +8,11 @@ import {
   Calendar, 
   ArrowRight, 
   FileText,
-  Sparkles
+  Sparkles,
+  XCircle
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
+import OrderPaymentDetails from '../components/common/OrderPaymentDetails';
 
 export default function OrderConfirmationPage() {
   const { orderNumber } = useParams();
@@ -54,18 +56,38 @@ export default function OrderConfirmationPage() {
     );
   }
 
+  const isCancelled = order.status === 'CANCELLED';
+  const discountLabel = order.couponCode
+    ? `Discount (${order.couponCode})`
+    : order.orderType === 'GROUP_BUY' ? 'Group buy saving' : 'Discount';
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
       
-      {/* Hero Success Badge Banner */}
-      <div className="glass-panel p-8 sm:p-12 rounded-3xl text-center space-y-4 border border-emerald-500/40 relative overflow-hidden">
-        <div className="w-16 h-16 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-          <CheckCircle2 className="w-10 h-10" />
-        </div>
-        <h1 className="text-3xl font-extrabold text-white">Order Confirmed & Authorized!</h1>
-        <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
-          Thank you for shopping with GroupMart AI. Order reference <strong className="text-nexus-400 font-mono">{order.orderNumber}</strong> has been logged in our processing queue.
-        </p>
+      {/* Hero Status Banner */}
+      <div className={`glass-panel p-8 sm:p-12 rounded-3xl text-center space-y-4 border relative overflow-hidden ${isCancelled ? 'border-rose-500/40' : 'border-emerald-500/40'}`}>
+        {isCancelled ? (
+          <>
+            <div className="w-16 h-16 bg-rose-950/80 border border-rose-500/40 text-rose-400 rounded-2xl flex items-center justify-center mx-auto">
+              <XCircle className="w-10 h-10" />
+            </div>
+            <h1 className="text-3xl font-extrabold text-white">Order Cancelled</h1>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+              Order <strong className="text-nexus-400 font-mono">{order.orderNumber}</strong> was cancelled.
+              {order.paymentDetails?.statusMessage ? ` ${order.paymentDetails.statusMessage}` : ''}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="w-16 h-16 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+            <h1 className="text-3xl font-extrabold text-white">Order Confirmed & Authorized!</h1>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+              Thank you for shopping with GroupMart AI. Order reference <strong className="text-nexus-400 font-mono">{order.orderNumber}</strong> has been logged in our processing queue.
+            </p>
+          </>
+        )}
 
         <div className="pt-2 flex flex-wrap justify-center gap-4 text-xs font-semibold">
           <Link
@@ -91,7 +113,7 @@ export default function OrderConfirmationPage() {
             <h3 className="text-lg font-bold text-white">Order Receipt Details</h3>
           </div>
           <div className="text-right">
-            <span className="px-3 py-1 bg-emerald-950 border border-emerald-800 text-emerald-300 text-xs font-bold rounded-full">
+            <span className={`px-3 py-1 border text-xs font-bold rounded-full ${isCancelled ? 'bg-rose-950 border-rose-800 text-rose-300' : 'bg-emerald-950 border-emerald-800 text-emerald-300'}`}>
               STATUS: {order.status}
             </span>
           </div>
@@ -114,9 +136,13 @@ export default function OrderConfirmationPage() {
             </h4>
             <p className="text-slate-400">Payment Method: <span className="text-white font-semibold">{order.paymentMethod}</span></p>
             <p className="text-slate-400">Payment Status: <span className="text-emerald-400 font-semibold">{order.paymentStatus}</span></p>
-            <p className="text-slate-400">Estimated Delivery: <span className="text-white font-semibold">3-5 Business Days</span></p>
+            {!isCancelled && (
+              <p className="text-slate-400">Estimated Delivery: <span className="text-white font-semibold">3-5 Business Days</span></p>
+            )}
           </div>
         </div>
+
+        <OrderPaymentDetails order={order} />
 
         {/* Line Items */}
         <div className="space-y-3 pt-2">
@@ -133,7 +159,7 @@ export default function OrderConfirmationPage() {
                     <p className="text-slate-500 font-mono text-[11px]">SKU: {item.productSku} • Qty: {item.quantity}</p>
                   </div>
                 </div>
-                <span className="font-bold text-white text-sm">${item.subtotal.toFixed(2)}</span>
+                <span className="font-bold text-white text-sm">৳{item.subtotal.toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -143,25 +169,25 @@ export default function OrderConfirmationPage() {
         <div className="p-4 bg-slate-900/90 border border-slate-800 rounded-2xl space-y-2 text-xs">
           <div className="flex justify-between text-slate-400">
             <span>Subtotal</span>
-            <span className="font-semibold text-slate-200">${order.subtotalAmount.toFixed(2)}</span>
+            <span className="font-semibold text-slate-200">৳{order.subtotalAmount.toFixed(2)}</span>
           </div>
           {order.discountAmount > 0 && (
             <div className="flex justify-between text-emerald-400">
-              <span>Discount ({order.couponCode})</span>
-              <span>-${order.discountAmount.toFixed(2)}</span>
+              <span>{discountLabel}</span>
+              <span>-৳{order.discountAmount.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between text-slate-400">
             <span>Tax</span>
-            <span className="font-semibold text-slate-200">${order.taxAmount.toFixed(2)}</span>
+            <span className="font-semibold text-slate-200">৳{order.taxAmount.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-slate-400">
             <span>Shipping</span>
-            <span className="font-semibold text-slate-200">${order.shippingAmount.toFixed(2)}</span>
+            <span className="font-semibold text-slate-200">৳{order.shippingAmount.toFixed(2)}</span>
           </div>
           <div className="pt-2 border-t border-slate-800 flex justify-between items-baseline text-sm">
             <span className="font-bold text-white">Total Amount Paid</span>
-            <span className="text-xl font-extrabold text-white">${order.totalAmount.toFixed(2)}</span>
+            <span className="text-xl font-extrabold text-white">৳{order.totalAmount.toFixed(2)}</span>
           </div>
         </div>
 

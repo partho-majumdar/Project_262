@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { Roles, ROUTES, isSellerApproved } from '../../constants/roles';
 import { 
   ShoppingBag, 
   ShieldCheck, 
@@ -35,7 +36,7 @@ export default function Footer() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="space-y-1 text-center md:text-left">
             <h3 className="text-base font-extrabold text-white">Subscribe to GroupMartVIP Offers</h3>
-            <p className="text-slate-400">Get $20 discount code on your first order + early access to flash deals.</p>
+            <p className="text-slate-400">Get ৳20 discount code on your first order + early access to flash deals.</p>
           </div>
 
           <form onSubmit={handleSubscribe} className="flex items-center gap-2 w-full max-w-md">
@@ -112,16 +113,16 @@ export default function Footer() {
           <div className="space-y-3">
             <h4 className="text-white font-bold text-sm">Enterprise Portals</h4>
             <ul className="space-y-2 text-slate-400">
-              {isAuthenticated && (user?.role === 'ROLE_SELLER' || user?.role === 'ROLE_ADMIN') && (
+              {isAuthenticated && isSellerApproved(user) && (
                 <li>
-                  <Link to="/seller/dashboard" className="hover:text-emerald-400 font-semibold transition flex items-center gap-1.5">
+                  <Link to={ROUTES.SELLER_DASHBOARD} className="hover:text-emerald-400 font-semibold transition flex items-center gap-1.5">
                     <Store className="w-3.5 h-3.5 text-emerald-400" /> Seller Central Hub
                   </Link>
                 </li>
               )}
-              {isAuthenticated && user?.role === 'ROLE_ADMIN' && (
+              {isAuthenticated && user?.role === Roles.ADMIN && (
                 <li>
-                  <Link to="/admin/dashboard" className="hover:text-rose-400 font-semibold transition flex items-center gap-1.5">
+                  <Link to={ROUTES.ADMIN_DASHBOARD} className="hover:text-rose-400 font-semibold transition flex items-center gap-1.5">
                     <Lock className="w-3.5 h-3.5 text-rose-400" /> Executive Admin Portal
                   </Link>
                 </li>

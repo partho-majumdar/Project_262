@@ -35,22 +35,37 @@ export default function AiAssistantPage() {
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
-  const chatEndRef = useRef(null);
+  const messagesRef = useRef(null);
 
   const promptChips = [
-    'Suggest AI Workstations for deep learning',
-    'Best Noise-Canceling Audio equipment under $300',
-    'Show top rated smart home electronics',
-    'Find budget deals under $200'
+    'How do group deals work?',
+    'How does wholesale pooling work?',
+    'Show products under ৳1000',
+    'Headphones between ৳300 and ৳800',
+    'Products greater than ৳2000'
   ];
 
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Scroll the message list itself rather than calling scrollIntoView on a sentinel:
+  // scrollIntoView also scrolls every scrollable ancestor, which dragged the whole page
+  // down on each send. Pinning again after layout catches replies whose product cards
+  // grow the list after the effect first runs.
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    const list = messagesRef.current;
+    if (!list) return undefined;
+
+    const pinToBottom = () => {
+      list.scrollTop = list.scrollHeight;
+    };
+
+    pinToBottom();
+    const frame = requestAnimationFrame(pinToBottom);
+    const settled = setTimeout(pinToBottom, 200);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(settled);
+    };
+  }, [messages, loading]);
 
   const handleSendMessage = async (textToSend) => {
     const query = textToSend || inputMessage;
@@ -68,14 +83,14 @@ export default function AiAssistantPage() {
     setLoading(true);
 
     try {
-      const response = await axiosClient.post('/ai/chat', { message: query });
-      const aiData = response.data;
+      const response = await axiosClient.post('/ai-assistant/chat', { message: query });
+      const aiData = response.data?.data || response.data;
 
       const aiMsg = {
         id: Date.now() + 1,
         sender: 'ai',
-        text: aiData.reply,
-        intent: aiData.intentDetected,
+        text: aiData.reply || 'I found matching products in our catalog for your query. Explore the vector recommendations below!',
+        intent: aiData.intent || aiData.intentDetected,
         products: aiData.recommendedProducts || [],
         timestamp: new Date(),
       };
@@ -88,10 +103,7 @@ export default function AiAssistantPage() {
           id: Date.now() + 1,
           sender: 'ai',
           text: 'I found matching products in our catalog for your query. Explore the vector recommendations below!',
-          products: [
-            { id: 1, name: 'NexusBook Pro 16 AI Workstation', price: 2499.99, rating: 5.0, slug: 'nexusbook-pro-16-ai-workstation', imageUrls: ['https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&auto=format&fit=crop'] },
-            { id: 4, name: 'Sony WH-1000XM5 Headphones', price: 399.99, rating: 4.9, slug: 'sony-wh-1000xm5-spatial-headphones', imageUrls: ['https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop'] }
-          ],
+          products: [],
           timestamp: new Date(),
         }
       ]);
@@ -139,7 +151,7 @@ export default function AiAssistantPage() {
       <div className="glass-card rounded-3xl border border-slate-800 p-4 sm:p-6 min-h-[520px] flex flex-col justify-between space-y-4">
         
         {/* Messages Scroll Area */}
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2 max-h-[460px]">
+        <div ref={messagesRef} className="flex-1 overflow-y-auto space-y-4 pr-2 max-h-[460px]">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -154,7 +166,7 @@ export default function AiAssistantPage() {
 
               {/* Message Content */}
               <div className="space-y-3">
-                <div className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                <div className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line ${
                   msg.sender === 'user'
                     ? 'bg-nexus-600 text-white rounded-tr-none'
                     : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-none'
@@ -173,7 +185,7 @@ export default function AiAssistantPage() {
                         <div className="flex-1 min-w-0 space-y-1">
                           <h4 className="font-bold text-white line-clamp-1">{prod.name}</h4>
                           <div className="flex justify-between items-center text-slate-400 font-semibold">
-                            <span className="text-emerald-400 font-extrabold">${prod.price.toFixed(2)}</span>
+                            <span className="text-emerald-400 font-extrabold">৳{prod.price.toFixed(2)}</span>
                             <span className="flex items-center text-amber-400 gap-0.5 text-[11px]">
                               <Star className="w-3 h-3 fill-amber-400" /> {prod.rating ? prod.rating.toFixed(1) : '5.0'}
                             </span>
@@ -204,7 +216,6 @@ export default function AiAssistantPage() {
             </div>
           )}
 
-          <div ref={chatEndRef} />
         </div>
 
         {/* Prompt Recommendation Chips */}

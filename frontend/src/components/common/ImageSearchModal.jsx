@@ -138,7 +138,7 @@ export default function ImageSearchModal({ isOpen, onClose }) {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-white text-xs truncate group-hover:text-nexus-400">{prod.name}</p>
                     <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                      <span className="font-extrabold text-emerald-400">${prod.price}</span>
+                      <span className="font-extrabold text-emerald-400">৳{prod.price}</span>
                       <span className="flex items-center gap-0.5 text-amber-400"><Star className="w-2.5 h-2.5 fill-amber-400" /> {prod.rating}</span>
                     </div>
                   </div>

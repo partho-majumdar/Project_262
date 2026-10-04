@@ -1,22 +1,26 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from '../components/common/Header';
+import AuthRoleHeader from '../components/common/AuthRoleHeader';
 import Footer from '../components/common/Footer';
+import { AuthBrandProvider } from '../context/AuthBrandContext';
 
 export default function PublicLayout() {
+  const { pathname } = useLocation();
+  const isSignIn = pathname === '/login';
+
   return (
-    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 selection:bg-nexus-500 selection:text-white">
-      
-      {/* Unified professional navigation header */}
-      <Header />
+    <AuthBrandProvider>
+      <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 selection:bg-nexus-500 selection:text-white">
 
-      {/* Main Content Area */}
-      <main className="flex-grow">
-        <Outlet />
-      </main>
+        {isSignIn ? <AuthRoleHeader /> : <Header />}
 
-      {/* Footer */}
-      <Footer />
-    </div>
+        <main className="flex-grow">
+          <Outlet />
+        </main>
+
+        <Footer />
+      </div>
+    </AuthBrandProvider>
   );
 }

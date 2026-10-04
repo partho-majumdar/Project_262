@@ -17,11 +17,22 @@ import java.util.Date;
 @Slf4j
 public class JwtTokenProvider {
 
-    @Value("${app.jwt.secret:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}")
-    private String jwtSecret;
+    private final String jwtSecret;
+    private final long jwtExpirationMs;
 
-    @Value("${app.jwt.expiration-ms:86400000}")
-    private long jwtExpirationMs;
+    public JwtTokenProvider(
+            @Value("${app.jwt.secret:}") String jwtSecret,
+            @Value("${app.jwt.expiration-ms:86400000}") long jwtExpirationMs
+    ) {
+        if (jwtSecret == null || jwtSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "app.jwt.secret must be configured via environment variable. " +
+                    "Refusing to start with an insecure default."
+            );
+        }
+        this.jwtSecret = jwtSecret.trim();
+        this.jwtExpirationMs = jwtExpirationMs;
+    }
 
     private SecretKey getSigningKey() {
         byte[] keyBytes;
@@ -52,13 +63,28 @@ public class JwtTokenProvider {
     }
 
     public String getEmailFromToken(String token) {
-        Claims claims = Jwts.parser()
+        return parse(token).getSubject();
+    }
+
+    /**
+     * The role the token was minted with, e.g. {@code ROLE_ADMIN}.
+     * <p>
+     * Needed by the realtime stream, which is authenticated from a query parameter rather than an
+     * Authorization header and so never passes through the filter that would normally populate the
+     * security context.
+     *
+     * @throws io.jsonwebtoken.JwtException if the token is invalid or expired
+     */
+    public String getRoleFromToken(String token) {
+        return parse(token).get("role", String.class);
+    }
+
+    private Claims parse(String token) {
+        return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-
-        return claims.getSubject();
     }
 
     public boolean validateToken(String authToken) {

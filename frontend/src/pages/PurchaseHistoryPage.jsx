@@ -44,7 +44,7 @@ export default function PurchaseHistoryPage() {
     addToCart({
       id: item.productId || item.id,
       name: item.productName,
-      price: item.price,
+      price: item.unitPrice,
       imageUrl: item.imageUrl
     }, 1);
     navigate('/cart');
@@ -52,7 +52,7 @@ export default function PurchaseHistoryPage() {
 
   const filteredOrders = orders.filter((ord) => {
     const matchesSearch = ord.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ord.orderItems?.some((i) => i.productName?.toLowerCase().includes(searchQuery.toLowerCase()));
+      ord.items?.some((i) => i.productName?.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = selectedStatus === 'ALL' || ord.status === selectedStatus;
     return matchesSearch && matchesStatus;
   });
@@ -131,7 +131,7 @@ export default function PurchaseHistoryPage() {
 
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase font-bold block">TOTAL AMOUNT</span>
-                    <span className="font-extrabold text-emerald-400 font-mono">${order.totalAmount ? order.totalAmount.toFixed(2) : '0.00'}</span>
+                    <span className="font-extrabold text-emerald-400 font-mono">৳{order.totalAmount ? order.totalAmount.toFixed(2) : '0.00'}</span>
                   </div>
                 </div>
 
@@ -145,7 +145,7 @@ export default function PurchaseHistoryPage() {
 
               {/* Items List */}
               <div className="space-y-3">
-                {order.orderItems?.map((item) => (
+                {order.items?.map((item) => (
                   <div key={item.id} className="p-3 bg-slate-900/40 rounded-2xl border border-slate-800/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     
                     <div className="flex items-center gap-3">

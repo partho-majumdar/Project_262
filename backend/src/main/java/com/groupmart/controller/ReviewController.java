@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import com.groupmart.common.response.ApiResponse;
 import com.groupmart.dto.review.ProductReviewSummaryDto;
 import com.groupmart.dto.review.ReviewDto;
+import com.groupmart.dto.review.ReviewEligibilityDto;
 import com.groupmart.dto.review.SellerReplyRequest;
 import com.groupmart.service.ReviewService;
 
@@ -34,6 +35,36 @@ public class ReviewController {
     public ResponseEntity<ApiResponse<ProductReviewSummaryDto>> getProductReviewSummary(@PathVariable UUID productId) {
         ProductReviewSummaryDto summary = reviewService.getProductReviewSummary(productId);
         return ResponseEntity.ok(ApiResponse.success("Product review summary fetched", summary));
+    }
+
+    /**
+     * Whether the signed-in customer may review this product. Reviews require a delivered order, so
+     * the product page asks this instead of offering a form that the server would reject.
+     */
+    @GetMapping("/product/{productId}/eligibility")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<ReviewEligibilityDto>> getReviewEligibility(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable UUID productId) {
+        ReviewEligibilityDto eligibility = reviewService.getEligibility(userDetails.getUsername(), productId);
+        return ResponseEntity.ok(ApiResponse.success("Review eligibility fetched", eligibility));
+    }
+
+    /** Batch form of the endpoint above, for marking a page of delivered order lines. */
+    @GetMapping("/eligibility")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<List<ReviewEligibilityDto>>> getReviewEligibilityBatch(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam List<UUID> productIds) {
+        List<ReviewEligibilityDto> results =
+                reviewService.getEligibilityForProducts(userDetails.getUsername(), productIds);
+        return ResponseEntity.ok(ApiResponse.success("Review eligibility fetched", results));
+    }
+
+    @GetMapping("/recent")
+    public ResponseEntity<ApiResponse<List<ReviewDto>>> getRecentReviews() {
+        List<ReviewDto> reviews = reviewService.getRecentReviews(6);
+        return ResponseEntity.ok(ApiResponse.success("Recent reviews fetched", reviews));
     }
 
     @PostMapping("/{reviewId}/helpful")

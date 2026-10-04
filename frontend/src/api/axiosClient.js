@@ -6,6 +6,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (
     : '/api/v1'
 );
 
+const TOKEN_KEY = 'nexus_token';
+const USER_KEY = 'nexus_user';
+
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -15,38 +18,35 @@ const axiosClient = axios.create({
   timeout: 15000,
 });
 
-// Request Interceptor: Attach JWT Bearer token if present in localStorage
 axiosClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('nexus_token');
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Extract API response payload & handle global auth errors
 axiosClient.interceptors.response.use(
-  (response) => {
-    return response.data;
-  },
+  (response) => response.data,
   (error) => {
     if (error.response) {
-      if (error.response.status === 401) {
-        // Token expired or invalid: Clear local session if needed
-        localStorage.removeItem('nexus_token');
-        localStorage.removeItem('nexus_user');
+      const status = error.response.status;
+      if (status === 401) {
+        // Clear local session and notify the app so the auth context can react.
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.dispatchEvent(new CustomEvent('auth:logout', { detail: { reason: 'token_expired' } }));
+        }
       }
       return Promise.reject(error.response.data || { message: 'An API error occurred' });
     } else if (error.request) {
-      return Promise.reject({ message: 'Network error. Backend server could not be reached on http://localhost:8080.' });
-    } else {
-      return Promise.reject({ message: error.message || 'An unknown error occurred.' });
+      return Promise.reject({ message: `Network error. Backend server could not be reached at ${API_BASE_URL}.` });
     }
+    return Promise.reject({ message: error.message || 'An unknown error occurred.' });
   }
 );
 

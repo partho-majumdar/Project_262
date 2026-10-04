@@ -1,7 +1,5 @@
 package com.groupmart.dto.auth;
 
-import com.groupmart.entity.Role;
-
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -31,6 +29,5 @@ public class RegisterRequest {
     private String lastName;
 
     private String phone;
-
-    private Role role; // Optional during registration (defaults to ROLE_CUSTOMER if null)
 }
+

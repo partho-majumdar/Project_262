@@ -5,9 +5,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.groupmart.dto.analytics.*;
+import com.groupmart.entity.Category;
 import com.groupmart.entity.Order;
 import com.groupmart.entity.OrderStatus;
 import com.groupmart.entity.Product;
+import com.groupmart.repository.CategoryRepository;
 import com.groupmart.repository.OrderRepository;
 import com.groupmart.repository.ProductRepository;
 import com.groupmart.service.AiBiAnalyticsService;
@@ -25,6 +27,7 @@ public class AiBiAnalyticsServiceImpl implements AiBiAnalyticsService {
 
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
+    private final CategoryRepository categoryRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -93,10 +96,10 @@ public class AiBiAnalyticsServiceImpl implements AiBiAnalyticsService {
             if (o.getTotalAmount().compareTo(new BigDecimal("1500.00")) > 0) {
                 fraudAnomalies.add(FraudAnomalyDto.builder()
                         .orderNumber(o.getOrderNumber())
-                        .userEmail(o.getUser() != null ? o.getUser().getEmail() : "customer@groupmart.com")
+                        .userEmail(o.getUser() != null ? o.getUser().getEmail() : "unknown-user")
                         .amount(o.getTotalAmount())
                         .riskScore(82)
-                        .anomalyReason("High transaction dollar threshold (> $1,500.00) & velocity spike")
+                        .anomalyReason("High transaction amount threshold (> ৳1,500.00) & velocity spike")
                         .status("REVIEW_NEEDED")
                         .timestamp(o.getCreatedAt())
                         .build());
@@ -108,7 +111,7 @@ public class AiBiAnalyticsServiceImpl implements AiBiAnalyticsService {
                 "Restock high-demand SKUs immediately: several electronics products show risk of stockout within 5 days.",
                 "Promote High AOV Bundles: Electronics category revenue represents 48.5% of total merchandise volume.",
                 "Optimize Checkout Conversion: Offering PayPal One-Touch reduced cart abandonment by 12.4% during peak hours.",
-                "Review Flagged High-Value Transactions: 1 order over $1,500 requires manual risk verification before shipping dispatch."
+                "Review Flagged High-Value Transactions: 1 order over ৳1,500 requires manual risk verification before shipping dispatch."
         );
 
         return EnterpriseBiDashboardDto.builder()
@@ -125,13 +128,29 @@ public class AiBiAnalyticsServiceImpl implements AiBiAnalyticsService {
 
     @Override
     public String generateCsvReport() {
+        List<Order> validOrders = orderRepository.findAll().stream()
+                .filter(o -> o.getStatus() != OrderStatus.CANCELLED)
+                .toList();
+
+        BigDecimal totalRevenue = validOrders.stream()
+                .map(Order::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        int totalOrders = validOrders.size();
+        BigDecimal avgOrderValue = totalOrders > 0
+                ? totalRevenue.divide(new BigDecimal(totalOrders), 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        long activeProducts = productRepository.count();
+        long totalCategories = categoryRepository.count();
+
         StringBuilder csv = new StringBuilder();
         csv.append("Metric,Value,Unit\n");
-        csv.append("Total Revenue,$").append("18450.00").append(",USD\n");
-        csv.append("Total Orders,").append("142").append(",Units\n");
-        csv.append("Average Order Value (AOV),$").append("129.93").append(",USD\n");
-        csv.append("Forecast Growth Rate,").append("14.8").append(",%\n");
-        csv.append("Active SKUs,").append("28").append(",Products\n");
+        csv.append("Total Revenue,৳").append(totalRevenue.toPlainString()).append(",USD\n");
+        csv.append("Total Orders,").append(totalOrders).append(",Units\n");
+        csv.append("Average Order Value (AOV),৳").append(avgOrderValue.toPlainString()).append(",USD\n");
+        csv.append("Active SKUs,").append(activeProducts).append(",Products\n");
+        csv.append("Active Categories,").append(totalCategories).append(",Categories\n");
         return csv.toString();
     }
 }

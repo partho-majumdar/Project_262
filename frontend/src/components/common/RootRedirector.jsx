@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { ROUTES, dashboardRouteForRole } from '../../constants/roles';
 
 export default function RootRedirector() {
   const { isAuthenticated, user, loading } = useAuth();
@@ -15,15 +16,8 @@ export default function RootRedirector() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={ROUTES.LOGIN} replace />;
   }
 
-  const role = user?.role;
-  if (role === 'ROLE_ADMIN') {
-    return <Navigate to="/admin/dashboard" replace />;
-  } else if (role === 'ROLE_SELLER') {
-    return <Navigate to="/seller/dashboard" replace />;
-  } else {
-    return <Navigate to="/customer/dashboard" replace />;
-  }
+  return <Navigate to={dashboardRouteForRole(user)} replace />;
 }

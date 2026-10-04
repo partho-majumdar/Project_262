@@ -153,7 +153,7 @@ export default function WishlistPage() {
                   </h4>
                 </Link>
                 <div className="flex items-center gap-2 text-xs pt-1">
-                  <span className="text-base font-extrabold text-white">${item.price.toFixed(2)}</span>
+                  <span className="text-base font-extrabold text-white">৳{item.price.toFixed(2)}</span>
                   {item.inStock ? (
                     <span className="text-emerald-400 text-[10px] font-semibold flex items-center gap-0.5">
                       <CheckCircle2 className="w-3 h-3" /> In Stock

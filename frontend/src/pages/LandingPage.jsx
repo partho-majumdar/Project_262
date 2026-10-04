@@ -11,7 +11,7 @@ import {
   TrendingUp, 
   Search, 
   Users, 
-  DollarSign, 
+  Banknote, 
   Layers, 
   HelpCircle, 
   ChevronDown, 
@@ -53,6 +53,7 @@ import {
   Play
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import axiosClient from '../api/axiosClient';
 import QuickViewModal from '../components/common/QuickViewModal';
 import ImageSearchModal from '../components/common/ImageSearchModal';
 import ProductComparisonModal from '../components/common/ProductComparisonModal';
@@ -60,6 +61,11 @@ import ProductComparisonModal from '../components/common/ProductComparisonModal'
 export default function LandingPage() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
+
+  const [categories, setCategories] = useState([]);
+  const [trendingProducts, setTrendingProducts] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Modals state
   const [selectedQuickView, setSelectedQuickView] = useState(null);
@@ -86,7 +92,7 @@ export default function LandingPage() {
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-        if (prev.minutes > 0) return { ...prev, minutes: 59, seconds: 59 };
+        if (prev.minutes > 0) return { hours: prev.hours, minutes: 59, seconds: 59 };
         if (prev.hours > 0) return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
         return { hours: 8, minutes: 42, seconds: 19 };
       });
@@ -94,77 +100,49 @@ export default function LandingPage() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [catRes, prodRes, revRes] = await Promise.all([
+          axiosClient.get('/categories').catch(() => ({ data: [] })),
+          axiosClient.get('/products/trending?size=20').catch(() => ({ data: { content: [] } })),
+          axiosClient.get('/reviews/recent').catch(() => ({ data: [] })),
+        ]);
+        setCategories(Array.isArray(catRes.data) ? catRes.data : []);
+        setTrendingProducts(Array.isArray(prodRes.data?.content) ? prodRes.data.content : []);
+        setReviews(Array.isArray(revRes.data) ? revRes.data : []);
+      } catch (err) {
+        console.error('Failed to fetch landing page data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
   const toggleWishlist = (id) => {
     setWishlistSaved((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   // Demo Interactive AI Assistant Handler
-  const handleAiDemo = (e) => {
+  const handleAiDemo = async (e) => {
     e.preventDefault();
     if (!aiPrompt.trim()) return;
     setAiThinking(true);
     setAiResponse('');
-    setTimeout(() => {
+    try {
+      const res = await axiosClient.post('/ai-assistant/chat', { message: aiPrompt });
+      setAiResponse(res.data?.reply || res.data?.data?.reply || 'AI response received.');
+    } catch (err) {
+      setAiResponse('AI assistant is currently unavailable. Please try again later.');
+    } finally {
       setAiThinking(false);
-      setAiResponse(
-        `Based on your preference for "${aiPrompt}", I recommend the NexusBook Pro 16 AI Workstation (16-Core M3 Max, 32GB RAM, 1TB NVMe). It features dedicated AI Neural Engine acceleration, 22-hour battery life, and 4.9★ customer rating.`
-      );
-    }, 1000);
+    }
   };
-
-  // 15 Featured Categories
-  const categories = [
-    { name: 'Electronics', image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop', count: '12,400+ Products', slug: 'electronics' },
-    { name: 'Mobiles', image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&auto=format&fit=crop', count: '8,900+ Products', slug: 'smartphones-tablets' },
-    { name: 'Laptops', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&auto=format&fit=crop', count: '5,200+ Products', slug: 'laptops-computers' },
-    { name: 'Gaming', image: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&auto=format&fit=crop', count: '6,400+ Products', slug: 'ai-gaming-gear' },
-    { name: 'Fashion', image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=600&auto=format&fit=crop', count: '18,500+ Products', slug: 'men-s-designer-apparel' },
-    { name: 'Smart Watches', image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop', count: '3,800+ Products', slug: 'smart-watches-wearables' },
-    { name: 'Audio & Sound', image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop', count: '7,100+ Products', slug: 'audio-headphones' },
-    { name: 'Cameras', image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=600&auto=format&fit=crop', count: '2,900+ Products', slug: 'cameras-photography' },
-    { name: 'Smart Home', image: 'https://images.unsplash.com/photo-1558002038-1055907df827?w=600&auto=format&fit=crop', count: '4,600+ Products', slug: 'smart-home-automation' },
-    { name: 'Luxury Tech', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=600&auto=format&fit=crop', count: '1,500+ Products', slug: 'luxury-tech-accessories' },
-    { name: 'Furniture', image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&auto=format&fit=crop', count: '9,300+ Products', slug: 'electronics' },
-    { name: 'Groceries', image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&auto=format&fit=crop', count: '25,000+ Items', slug: 'electronics' },
-    { name: 'Beauty', image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600&auto=format&fit=crop', count: '14,200+ Products', slug: 'electronics' },
-    { name: 'Sports', image: 'https://images.unsplash.com/photo-1517649763962-0c623266010b?w=600&auto=format&fit=crop', count: '8,100+ Products', slug: 'electronics' },
-    { name: 'Automotive', image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600&auto=format&fit=crop', count: '3,400+ Products', slug: 'electronics' }
-  ];
-
-  // 20 Premium Products (Trending Products Showcase Grid)
-  const trendingProducts = [
-    { id: 1, name: 'Apple iPhone 15 Pro Max Titanium', brand: 'Apple', price: 1199.99, compareAtPrice: 1399.99, rating: 4.9, reviewCount: 480, slug: 'apple-iphone-15-pro-max', image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&auto=format&fit=crop', discount: '15% OFF' },
-    { id: 2, name: 'NexusBook Pro 16 AI Workstation', brand: 'Nexus', price: 2499.99, compareAtPrice: 2899.99, rating: 5.0, reviewCount: 310, slug: 'nexusbook-pro-16-ai-workstation', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&auto=format&fit=crop', discount: '14% OFF' },
-    { id: 3, name: 'Samsung Galaxy S24 Ultra AI Edition', brand: 'Samsung', price: 1299.99, compareAtPrice: 1499.99, rating: 4.8, reviewCount: 520, slug: 'samsung-galaxy-s24-ultra', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=600&auto=format&fit=crop', discount: '13% OFF' },
-    { id: 4, name: 'Sony WH-1000XM5 Spatial ANC Headphones', brand: 'Sony', price: 399.99, compareAtPrice: 449.99, rating: 4.9, reviewCount: 840, slug: 'sony-wh-1000xm5-spatial-headphones', image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop', discount: '11% OFF' },
-    { id: 5, name: 'Apple Watch Ultra 2 GPS + Cellular', brand: 'Apple', price: 799.99, compareAtPrice: 899.99, rating: 4.9, reviewCount: 290, slug: 'apple-watch-ultra-2', image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop', discount: '11% OFF' },
-    { id: 6, name: 'Sony Alpha 7 IV Full Frame Camera', brand: 'Sony', price: 2498.00, compareAtPrice: 2699.99, rating: 4.9, reviewCount: 190, slug: 'sony-alpha-7-iv-full-frame-camera', image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=600&auto=format&fit=crop', discount: '8% OFF' },
-    { id: 7, name: 'Asus ROG Strix RTX 4090 Gaming Rig', brand: 'Asus', price: 3299.99, compareAtPrice: 3699.99, rating: 5.0, reviewCount: 140, slug: 'asus-rog-strix-rtx-4090', image: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&auto=format&fit=crop', discount: '10% OFF' },
-    { id: 8, name: 'Dell XPS 15 OLED Touch Workstation', brand: 'Dell', price: 1899.99, compareAtPrice: 2199.99, rating: 4.7, reviewCount: 230, slug: 'dell-xps-15-oled', image: 'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?w=600&auto=format&fit=crop', discount: '13% OFF' },
-    { id: 9, name: 'Nike Air Max AI Pulse Sneakers', brand: 'Nike', price: 189.99, compareAtPrice: 220.00, rating: 4.8, reviewCount: 650, slug: 'nike-air-max-pulse', image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop', discount: '14% OFF' },
-    { id: 10, name: 'Bose Smart Ultra Soundbar Dolby Atmos', brand: 'Bose', price: 899.99, compareAtPrice: 999.99, rating: 4.8, reviewCount: 310, slug: 'bose-smart-ultra-soundbar', image: 'https://images.unsplash.com/photo-1545454675-3531b543be5d?w=600&auto=format&fit=crop', discount: '10% OFF' },
-    { id: 11, name: 'Dyson V15 Detect Cordless Vacuum', brand: 'Dyson', price: 749.99, compareAtPrice: 849.99, rating: 4.9, reviewCount: 420, slug: 'dyson-v15-detect', image: 'https://images.unsplash.com/photo-1558002038-1055907df827?w=600&auto=format&fit=crop', discount: '12% OFF' },
-    { id: 12, name: 'Razer DeathStalker V2 Pro Wireless', brand: 'Razer', price: 219.99, compareAtPrice: 249.99, rating: 4.7, reviewCount: 180, slug: 'razer-deathstalker-v2', image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=600&auto=format&fit=crop', discount: '12% OFF' },
-    { id: 13, name: 'Logitech MX Master 3S Wireless Mouse', brand: 'Logitech', price: 99.99, compareAtPrice: 119.99, rating: 4.9, reviewCount: 940, slug: 'logitech-mx-master-3s', image: 'https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?w=600&auto=format&fit=crop', discount: '16% OFF' },
-    { id: 14, name: 'OnePlus 12 5G Hasselblad Camera', brand: 'OnePlus', price: 799.99, compareAtPrice: 899.99, rating: 4.8, reviewCount: 370, slug: 'oneplus-12-5g', image: 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=600&auto=format&fit=crop', discount: '11% OFF' },
-    { id: 15, name: 'Nothing Phone (2) Glyph Interface', brand: 'Nothing', price: 699.99, compareAtPrice: 799.99, rating: 4.7, reviewCount: 260, slug: 'nothing-phone-2', image: 'https://images.unsplash.com/photo-1565849904461-04a58ad377e0?w=600&auto=format&fit=crop', discount: '12.5% OFF' },
-    { id: 16, name: 'Anker Solix Portable Power Station', brand: 'Anker', price: 999.99, compareAtPrice: 1199.99, rating: 4.9, reviewCount: 150, slug: 'anker-solix-power', image: 'https://images.unsplash.com/photo-1617788138017-80ad40651399?w=600&auto=format&fit=crop', discount: '16% OFF' },
-    { id: 17, name: 'JBL Boombox 3 Wi-Fi Portable Speaker', brand: 'JBL', price: 499.99, compareAtPrice: 599.99, rating: 4.8, reviewCount: 410, slug: 'jbl-boombox-3', image: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=600&auto=format&fit=crop', discount: '16.6% OFF' },
-    { id: 18, name: 'Canon EOS R6 Mark II Mirrorless Body', brand: 'Canon', price: 2299.00, compareAtPrice: 2499.00, rating: 4.9, reviewCount: 220, slug: 'canon-eos-r6-mark-ii', image: 'https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=600&auto=format&fit=crop', discount: '8% OFF' },
-    { id: 19, name: 'Philips Hue Gradient Lightstrip Starter', brand: 'Philips', price: 279.99, compareAtPrice: 329.99, rating: 4.8, reviewCount: 330, slug: 'philips-hue-lightstrip', image: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=600&auto=format&fit=crop', discount: '15% OFF' },
-    { id: 20, name: 'DJI Mavic 3 Pro Cine Drone Kit', brand: 'DJI', price: 2199.99, compareAtPrice: 2499.99, rating: 5.0, reviewCount: 170, slug: 'dji-mavic-3-pro', image: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?w=600&auto=format&fit=crop', discount: '12% OFF' }
-  ];
 
   // Brand Logos Carousel Data
   const brands = [
     'Apple', 'Samsung', 'Sony', 'Dell', 'HP', 'Asus', 'Lenovo', 'Nike', 'Adidas', 'Puma', 'Boat', 'Nothing', 'LG', 'Canon', 'OnePlus'
-  ];
-
-  // Verified Customer Reviews
-  const reviews = [
-    { name: 'Sarah Jenkins', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop', rating: 5, title: 'Unmatched AI Search & Delivery Speed', comment: 'The voice search and visual camera search are game changers. I found exact accessories in seconds and received my delivery in less than 24 hours!' },
-    { name: 'David Miller', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop', rating: 5, title: 'Shopify Seller Center Superiority', comment: 'As a verified merchant selling electronic hardware, the bulk CSV upload and net profit analytics increased our store revenue by 42% in 90 days.' },
-    { name: 'Elena Rostova', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop', rating: 5, title: 'Premium Flagship Shopping Experience', comment: 'The product comparison and 1-click bundle recommendations saved me $180 on my workstation purchase. World-class marketplace experience!' }
   ];
 
   const handleSubscribe = (e) => {
@@ -246,7 +224,7 @@ export default function LandingPage() {
               <div>
                 <span className="text-[10px] text-nexus-400 font-bold uppercase">GroupMart X Item</span>
                 <p className="font-extrabold text-white text-xs">iPhone 15 Pro Max</p>
-                <p className="text-emerald-400 font-mono font-bold text-xs">$1,199.99</p>
+                <p className="text-emerald-400 font-mono font-bold text-xs">৳1,199.99</p>
               </div>
             </div>
 
@@ -255,7 +233,7 @@ export default function LandingPage() {
               <div>
                 <span className="text-[10px] text-amber-400 font-bold uppercase">Flash Deal 15% OFF</span>
                 <p className="font-extrabold text-white text-xs">Sony WH-1000XM5</p>
-                <p className="text-emerald-400 font-mono font-bold text-xs">$399.99</p>
+                <p className="text-emerald-400 font-mono font-bold text-xs">৳399.99</p>
               </div>
             </div>
           </div>
@@ -308,21 +286,33 @@ export default function LandingPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-          {categories.map((cat, idx) => (
-            <Link
-              key={idx}
-              to={`/products?category=${cat.slug}`}
-              className="glass-card rounded-2xl border border-slate-800 overflow-hidden space-y-3 p-3 hover:border-nexus-500/50 hover:scale-105 transition-all duration-200 group"
-            >
-              <div className="h-32 bg-slate-900 rounded-xl overflow-hidden">
-                <img src={cat.image} alt={cat.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+          {loading ? (
+            Array.from({ length: 10 }).map((_, idx) => (
+              <div key={idx} className="glass-card rounded-2xl border border-slate-800 p-3 space-y-3 animate-pulse">
+                <div className="h-32 bg-slate-800 rounded-xl" />
+                <div className="h-4 bg-slate-800 rounded w-3/4" />
+                <div className="h-3 bg-slate-800 rounded w-1/2" />
               </div>
-              <div>
-                <h3 className="font-bold text-white text-xs line-clamp-1 group-hover:text-nexus-400 transition-colors">{cat.name}</h3>
-                <p className="text-[10px] text-slate-400 font-mono">{cat.count}</p>
-              </div>
-            </Link>
-          ))}
+            ))
+          ) : categories.length === 0 ? (
+            <div className="col-span-full text-center text-slate-500 text-xs py-8">No categories available yet.</div>
+          ) : (
+            categories.map((cat) => (
+              <Link
+                key={cat.id || cat.slug}
+                to={`/products?categorySlug=${cat.slug}`}
+                className="glass-card rounded-2xl border border-slate-800 overflow-hidden space-y-3 p-3 hover:border-nexus-500/50 hover:scale-105 transition-all duration-200 group"
+              >
+                <div className="h-32 bg-slate-900 rounded-xl overflow-hidden">
+                  <img src={cat.imageUrl || cat.image} alt={cat.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-xs line-clamp-1 group-hover:text-nexus-400 transition-colors">{cat.name}</h3>
+                  <p className="text-[10px] text-slate-400 font-mono">Browse Products</p>
+                </div>
+              </Link>
+            ))
+          )}
         </div>
       </section>
 
@@ -341,94 +331,111 @@ export default function LandingPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-          {trendingProducts.map((prod) => (
-            <div key={prod.id} className="glass-card rounded-3xl border border-slate-800 p-4 space-y-4 hover:border-slate-700 transition-all flex flex-col justify-between group">
-              <div className="space-y-3">
-                
-                {/* Product Image */}
-                <div className="h-48 bg-slate-900 rounded-2xl overflow-hidden relative">
-                  <img src={prod.image} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                  <span className="absolute top-3 left-3 px-2 py-0.5 bg-rose-950 border border-rose-800 text-rose-300 font-mono font-bold text-[10px] rounded-full">
-                    {prod.discount}
-                  </span>
-
-                  {/* Wishlist Button Top Right */}
-                  <button
-                    onClick={() => toggleWishlist(prod.id)}
-                    className="absolute top-3 right-3 p-1.5 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-full text-slate-300 transition"
-                    title="Bookmark Wishlist"
-                  >
-                    <Heart className={`w-4 h-4 ${wishlistSaved[prod.id] ? 'fill-rose-500 text-rose-500' : ''}`} />
-                  </button>
-
-                  {/* Quick Action Overlay Buttons */}
-                  <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => setSelectedQuickView(prod)}
-                      className="p-1.5 text-slate-300 hover:text-nexus-400 transition"
-                      title="Quick View"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => setIsCompareOpen(true)}
-                      className="p-1.5 text-slate-300 hover:text-nexus-400 transition"
-                      title="Product Comparison"
-                    >
-                      <Scale className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Meta */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                    <span className="font-bold text-nexus-400 uppercase">{prod.brand}</span>
-                    <span className="flex items-center gap-1 text-amber-400">
-                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {prod.rating} ({prod.reviewCount})
-                    </span>
-                  </div>
-
-                  <h3 className="font-bold text-white text-xs line-clamp-1 group-hover:text-nexus-400 transition-colors">
-                    {prod.name}
-                  </h3>
-                </div>
+          {loading ? (
+            Array.from({ length: 4 }).map((_, idx) => (
+              <div key={idx} className="glass-card rounded-3xl border border-slate-800 p-4 space-y-4 animate-pulse">
+                <div className="h-48 bg-slate-800 rounded-2xl" />
+                <div className="h-4 bg-slate-800 rounded w-3/4" />
+                <div className="h-4 bg-slate-800 rounded w-1/2" />
               </div>
+            ))
+          ) : trendingProducts.length === 0 ? (
+            <div className="col-span-full text-center text-slate-500 text-xs py-8">No trending products available yet.</div>
+          ) : (
+            trendingProducts.map((prod) => {
+              const discountPercent =
+                prod.compareAtPrice != null && prod.price != null && prod.compareAtPrice.compareTo(prod.price) > 0
+                  ? Math.round((prod.compareAtPrice.subtract(prod.price).doubleValue() / prod.compareAtPrice.doubleValue()) * 100)
+                  : null;
+              const productImage = prod.imageUrls?.[0] || 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=600&auto=format&fit=crop';
+              return (
+                <div key={prod.id} className="glass-card rounded-3xl border border-slate-800 p-4 space-y-4 hover:border-slate-700 transition-all flex flex-col justify-between group">
+                  <div className="space-y-3">
+                    <div className="h-48 bg-slate-900 rounded-2xl overflow-hidden relative">
+                      <img src={productImage} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      {discountPercent != null && (
+                        <span className="absolute top-3 left-3 px-2 py-0.5 bg-rose-950 border border-rose-800 text-rose-300 font-mono font-bold text-[10px] rounded-full">
+                          {discountPercent}% OFF
+                        </span>
+                      )}
 
-              {/* Price & Action Buttons */}
-              <div className="pt-3 border-t border-slate-800 space-y-2">
-                <div className="flex items-baseline justify-between">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-extrabold text-emerald-400">${prod.price.toFixed(2)}</span>
-                    <span className="text-[10px] text-slate-500 line-through">${prod.compareAtPrice.toFixed(2)}</span>
+                      <button
+                        onClick={() => toggleWishlist(prod.id)}
+                        className="absolute top-3 right-3 p-1.5 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-full text-slate-300 transition"
+                        title="Bookmark Wishlist"
+                      >
+                        <Heart className={`w-4 h-4 ${wishlistSaved[prod.id] ? 'fill-rose-500 text-rose-500' : ''}`} />
+                      </button>
+
+                      <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => setSelectedQuickView(prod)}
+                          className="p-1.5 text-slate-300 hover:text-nexus-400 transition"
+                          title="Quick View"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => setIsCompareOpen(true)}
+                          className="p-1.5 text-slate-300 hover:text-nexus-400 transition"
+                          title="Product Comparison"
+                        >
+                          <Scale className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                        <span className="font-bold text-nexus-400 uppercase">{prod.sellerStoreName || 'Official Store'}</span>
+                        <span className="flex items-center gap-1 text-amber-400">
+                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {prod.rating} ({prod.reviewCount})
+                        </span>
+                      </div>
+
+                      <h3 className="font-bold text-white text-xs line-clamp-1 group-hover:text-nexus-400 transition-colors">
+                        {prod.name}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-800 space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-extrabold text-emerald-400">৳{Number(prod.price).toFixed(2)}</span>
+                        {prod.compareAtPrice != null && (
+                          <span className="text-[10px] text-slate-500 line-through">৳{Number(prod.compareAtPrice).toFixed(2)}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          addToCart(prod, 1);
+                          alert(`Added ${prod.name} to your cart!`);
+                        }}
+                        className="py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5 text-nexus-400" /> Add
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          addToCart(prod, 1);
+                          navigate('/checkout');
+                        }}
+                        className="py-2 bg-gradient-to-r from-nexus-600 to-indigo-600 hover:from-nexus-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-md"
+                      >
+                        Buy Now
+                      </button>
+                    </div>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => {
-                      addToCart(prod, 1);
-                      alert(`Added ${prod.name} to your cart!`);
-                    }}
-                    className="py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"
-                  >
-                    <ShoppingCart className="w-3.5 h-3.5 text-nexus-400" /> Add
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      addToCart(prod, 1);
-                      navigate('/checkout');
-                    }}
-                    className="py-2 bg-gradient-to-r from-nexus-600 to-indigo-600 hover:from-nexus-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-md"
-                  >
-                    Buy Now
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
       </section>
 
@@ -516,7 +523,7 @@ export default function LandingPage() {
             <Truck className="w-6 h-6 text-nexus-400 shrink-0" />
             <div>
               <p className="font-bold text-white">Fast Free Delivery</p>
-              <p className="text-slate-400 text-[10px]">On all orders over $50</p>
+              <p className="text-slate-400 text-[10px]">On all orders over ৳50</p>
             </div>
           </div>
 
@@ -570,28 +577,48 @@ export default function LandingPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {reviews.map((rev, idx) => (
-            <div key={idx} className="glass-card p-6 rounded-3xl border border-slate-800 space-y-4">
-              <div className="flex items-center gap-3">
-                <img src={rev.avatar} alt={rev.name} className="w-10 h-10 rounded-full object-cover border border-slate-800" />
-                <div>
-                  <h4 className="font-bold text-white text-xs">{rev.name}</h4>
-                  <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Verified Buyer
-                  </span>
+          {loading ? (
+            Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="glass-card p-6 rounded-3xl border border-slate-800 space-y-4 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-slate-800 rounded-full" />
+                  <div className="space-y-2">
+                    <div className="h-3 bg-slate-800 rounded w-24" />
+                    <div className="h-2 bg-slate-800 rounded w-16" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="h-3 bg-slate-800 rounded w-full" />
+                  <div className="h-3 bg-slate-800 rounded w-5/6" />
                 </div>
               </div>
+            ))
+          ) : reviews.length === 0 ? (
+            <div className="col-span-full text-center text-slate-500 text-xs py-8">No reviews yet. Be the first to share your experience!</div>
+          ) : (
+            reviews.map((rev) => (
+              <div key={rev.id} className="glass-card p-6 rounded-3xl border border-slate-800 space-y-4">
+                <div className="flex items-center gap-3">
+                  <img src={rev.userAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop'} alt={rev.userName} className="w-10 h-10 rounded-full object-cover border border-slate-800" />
+                  <div>
+                    <h4 className="font-bold text-white text-xs">{rev.userName}</h4>
+                    <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> {rev.verifiedPurchase ? 'Verified Buyer' : 'Customer'}
+                    </span>
+                  </div>
+                </div>
 
-              <div className="flex text-amber-400">
-                {[...Array(rev.rating)].map((_, i) => (
-                  <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                ))}
+                <div className="flex text-amber-400">
+                  {[...Array(rev.rating)].map((_, i) => (
+                    <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+
+                <h5 className="font-bold text-white text-xs">{rev.title}</h5>
+                <p className="text-xs text-slate-300 leading-relaxed">{rev.comment}</p>
               </div>
-
-              <h5 className="font-bold text-white text-xs">{rev.title}</h5>
-              <p className="text-xs text-slate-300 leading-relaxed">{rev.comment}</p>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </section>
 
@@ -613,7 +640,7 @@ export default function LandingPage() {
               type="text"
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder="e.g. Suggest the best laptop under $1,200 for gaming and work..."
+              placeholder="e.g. Suggest the best laptop under ৳1,200 for gaming and work..."
               className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-nexus-500"
               required
             />
@@ -627,7 +654,7 @@ export default function LandingPage() {
           </form>
 
           {aiResponse && (
-            <div className="p-4 bg-slate-950 border border-nexus-900/80 rounded-2xl text-xs text-slate-200 leading-relaxed font-mono">
+            <div className="p-4 bg-slate-950 border border-nexus-900/80 rounded-2xl text-xs text-slate-200 leading-relaxed font-mono whitespace-pre-line">
               {aiResponse}
             </div>
           )}
@@ -659,7 +686,7 @@ export default function LandingPage() {
         <div className="glass-panel p-8 rounded-3xl border border-slate-800 bg-slate-900/60 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="space-y-1 text-center md:text-left">
             <h3 className="text-lg font-bold text-white">Subscribe to GroupMartVIP Offers</h3>
-            <p className="text-xs text-slate-400">Get $20 discount code on your first order + early access to flash deals.</p>
+            <p className="text-xs text-slate-400">Get ৳20 discount code on your first order + early access to flash deals.</p>
           </div>
 
           <form onSubmit={handleSubscribe} className="flex items-center gap-2 w-full max-w-md">

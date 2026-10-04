@@ -135,7 +135,7 @@ export default function ProductComparisonModal({
   const formatPrice = (val) => {
     if (val == null || val === '') return '—';
     const n = Number(val);
-    return Number.isFinite(n) ? `$${n.toFixed(2)}` : String(val);
+    return Number.isFinite(n) ? `৳${n.toFixed(2)}` : String(val);
   };
 
   const formatRating = (rating, reviewCount) => {

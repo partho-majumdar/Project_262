@@ -7,10 +7,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.groupmart.common.exception.ApiException;
 import com.groupmart.common.exception.ResourceNotFoundException;
+import com.groupmart.dto.auth.SellerApplicationRequest;
 import com.groupmart.dto.seller.*;
 import com.groupmart.entity.OrderItem;
 import com.groupmart.entity.Product;
 import com.groupmart.entity.Role;
+import com.groupmart.entity.SellerStatus;
 import com.groupmart.entity.SellerStore;
 import com.groupmart.entity.User;
 import com.groupmart.repository.OrderItemRepository;
@@ -21,10 +23,12 @@ import com.groupmart.service.SellerService;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,9 +43,116 @@ public class SellerServiceImpl implements SellerService {
 
     @Override
     @Transactional
+    public SellerApplicationDto submitSellerApplication(String userEmail, SellerApplicationRequest request) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        if (user.getSellerStatus() == SellerStatus.PENDING) {
+            throw new ApiException("A seller application is already pending review", HttpStatus.CONFLICT);
+        }
+
+        if (user.getSellerStatus() == SellerStatus.APPROVED) {
+            throw new ApiException("You are already an approved seller", HttpStatus.CONFLICT);
+        }
+
+        if (sellerStoreRepository.existsByUserId(user.getId())) {
+            throw new ApiException("User already owns a registered seller store", HttpStatus.CONFLICT);
+        }
+
+        if (sellerStoreRepository.existsByStoreName(request.getStoreName().trim())) {
+            throw new ApiException("Store name '" + request.getStoreName() + "' is already taken", HttpStatus.CONFLICT);
+        }
+
+        String slug = generateStoreSlug(request.getStoreName());
+
+        SellerStore store = SellerStore.builder()
+                .user(user)
+                .storeName(request.getStoreName().trim())
+                .storeSlug(slug)
+                .description(request.getDescription())
+                .logoUrl(request.getLogoUrl())
+                .bannerUrl(request.getBannerUrl())
+                .taxId(request.getTaxId())
+                .bankAccount(request.getBankAccount())
+                .bankName(request.getBankName())
+                .verified(false)
+                .rating(0.0)
+                .totalSales(0)
+                .build();
+        SellerStore savedStore = sellerStoreRepository.save(store);
+
+        user.setSellerStatus(SellerStatus.PENDING);
+        user.setSellerStatusReason(null);
+        user.setSellerReviewedAt(null);
+        userRepository.save(user);
+
+        return mapToApplicationDto(user, savedStore);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SellerApplicationDto getSellerApplicationByEmail(String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        SellerStore store = sellerStoreRepository.findByUserId(user.getId()).orElse(null);
+        return mapToApplicationDto(user, store);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SellerApplicationDto> getAllSellerApplications() {
+        return userRepository.findAll().stream()
+                .filter(u -> u.getSellerStatus() != SellerStatus.NONE)
+                .map(u -> {
+                    SellerStore store = sellerStoreRepository.findByUserId(u.getId()).orElse(null);
+                    return mapToApplicationDto(u, store);
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public SellerApplicationDto reviewSellerApplication(UUID userId, SellerStatus decision, String reason, String adminEmail) {
+        if (decision != SellerStatus.APPROVED && decision != SellerStatus.REJECTED) {
+            throw new ApiException("Decision must be APPROVED or REJECTED", HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+
+        if (user.getSellerStatus() != SellerStatus.PENDING) {
+            throw new ApiException("No pending seller application for this user", HttpStatus.CONFLICT);
+        }
+
+        user.setSellerStatus(decision);
+        user.setSellerStatusReason(reason);
+        user.setSellerReviewedAt(LocalDateTime.now());
+        if (decision == SellerStatus.APPROVED) {
+            user.setRole(Role.ROLE_SELLER);
+        }
+        User saved = userRepository.save(user);
+
+        SellerStore store = sellerStoreRepository.findByUserId(userId).orElse(null);
+        if (store != null && decision == SellerStatus.APPROVED) {
+            store.setVerified(true);
+            store = sellerStoreRepository.save(store);
+        }
+
+        return mapToApplicationDto(saved, store);
+    }
+
+    @Override
+    @Transactional
     public SellerStoreDto createSellerStore(String userEmail, CreateSellerStoreRequest request) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        if (user.getRole() == Role.ROLE_ADMIN) {
+            // admins can create stores on behalf of themselves without approval
+        } else if (user.getSellerStatus() != SellerStatus.APPROVED) {
+            throw new ApiException("Seller application must be approved before opening a store", HttpStatus.FORBIDDEN);
+        }
 
         if (sellerStoreRepository.existsByUserId(user.getId())) {
             throw new ApiException("User already owns a registered seller store", HttpStatus.CONFLICT);
@@ -53,11 +164,6 @@ public class SellerServiceImpl implements SellerService {
 
         String slug = generateStoreSlug(request.getStoreName());
 
-        if (user.getRole() == Role.ROLE_CUSTOMER) {
-            user.setRole(Role.ROLE_SELLER);
-            userRepository.save(user);
-        }
-
         SellerStore store = SellerStore.builder()
                 .user(user)
                 .storeName(request.getStoreName().trim())
@@ -66,7 +172,7 @@ public class SellerServiceImpl implements SellerService {
                 .logoUrl(request.getLogoUrl())
                 .bannerUrl(request.getBannerUrl())
                 .taxId(request.getTaxId())
-                .verified(false)
+                .verified(user.getRole() == Role.ROLE_ADMIN)
                 .rating(0.0)
                 .totalSales(0)
                 .build();
@@ -80,6 +186,8 @@ public class SellerServiceImpl implements SellerService {
     public SellerStoreDto getSellerStoreByEmail(String userEmail) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        ensureSellerApproved(user);
 
         SellerStore store = sellerStoreRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
@@ -100,6 +208,8 @@ public class SellerServiceImpl implements SellerService {
     public SellerStoreDto updateSellerStore(String userEmail, UpdateSellerStoreRequest request) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        ensureSellerApproved(user);
 
         SellerStore store = sellerStoreRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
@@ -135,6 +245,8 @@ public class SellerServiceImpl implements SellerService {
     public SellerDashboardOverviewDto getSellerDashboardOverview(String userEmail) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        ensureSellerApproved(user);
 
         SellerStore store = sellerStoreRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("SellerStore", "userId", user.getId()));
@@ -200,7 +312,66 @@ public class SellerServiceImpl implements SellerService {
 
         store.setVerified(verify);
         SellerStore updated = sellerStoreRepository.save(store);
+
+        if (verify && store.getUser() != null) {
+            User user = store.getUser();
+            if (user.getSellerStatus() != SellerStatus.APPROVED) {
+                user.setSellerStatus(SellerStatus.APPROVED);
+                user.setSellerStatusReason(null);
+                user.setSellerReviewedAt(LocalDateTime.now());
+            }
+            if (user.getRole() != Role.ROLE_SELLER) {
+                user.setRole(Role.ROLE_SELLER);
+            }
+            userRepository.save(user);
+        }
+
         return mapToDto(updated);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PublicSellerStoreDto> getAllPublicSellers() {
+        return sellerStoreRepository.findAll().stream()
+                .map(this::mapToPublicDto)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    private PublicSellerStoreDto mapToPublicDto(SellerStore store) {
+        return PublicSellerStoreDto.builder()
+                .id(store.getId())
+                .userId(store.getUser().getId())
+                .storeName(store.getStoreName())
+                .storeSlug(store.getStoreSlug())
+                .description(store.getDescription())
+                .logoUrl(store.getLogoUrl())
+                .verified(store.isVerified())
+                .rating(store.getRating())
+                .totalSales(store.getTotalSales())
+                .createdAt(store.getCreatedAt())
+                .build();
+    }
+
+    private void ensureSellerApproved(User user) {
+        if (user.getRole() == Role.ROLE_ADMIN) return;
+        if (user.getSellerStatus() != SellerStatus.APPROVED) {
+            throw new ApiException("Seller application must be approved by an administrator before using the merchant portal", HttpStatus.FORBIDDEN);
+        }
+    }
+
+    private SellerApplicationDto mapToApplicationDto(User user, SellerStore store) {
+        return SellerApplicationDto.builder()
+                .userId(user.getId())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .phone(user.getPhone())
+                .sellerStatus(user.getSellerStatus())
+                .sellerStatusReason(user.getSellerStatusReason())
+                .sellerReviewedAt(user.getSellerReviewedAt())
+                .submittedAt(store != null ? store.getCreatedAt() : null)
+                .store(store != null ? mapToDto(store) : null)
+                .build();
     }
 
     private String generateStoreSlug(String name) {

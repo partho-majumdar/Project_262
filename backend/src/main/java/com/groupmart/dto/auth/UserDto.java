@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import com.groupmart.entity.Role;
+import com.groupmart.entity.SellerStatus;
 
 @Data
 @Builder
@@ -23,6 +24,8 @@ public class UserDto {
     private String phone;
     private String avatarUrl;
     private Role role;
+    private SellerStatus sellerStatus;
     private boolean enabled;
     private LocalDateTime createdAt;
 }
+

@@ -21,6 +21,7 @@ public class SellerController {
     private final SellerService sellerService;
 
     @PostMapping("/store")
+    @PreAuthorize("hasAnyRole('SELLER','ADMIN')")
     public ResponseEntity<ApiResponse<SellerStoreDto>> createStore(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody CreateSellerStoreRequest request
@@ -53,3 +54,4 @@ public class SellerController {
         return ResponseEntity.ok(ApiResponse.success("Seller dashboard overview retrieved", overview));
     }
 }
+

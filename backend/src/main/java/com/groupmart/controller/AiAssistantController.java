@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/ai/assistant")
+@RequestMapping("/api/v1/ai-assistant")
 @RequiredArgsConstructor
 public class AiAssistantController {
 

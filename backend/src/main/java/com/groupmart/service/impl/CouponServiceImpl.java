@@ -48,6 +48,8 @@ public class CouponServiceImpl implements CouponService {
             return CouponValidationResponse.builder()
                     .valid(false)
                     .code(code)
+                    .description(null)
+                    .discountValue(BigDecimal.ZERO)
                     .calculatedDiscount(BigDecimal.ZERO)
                     .message("Invalid promotional coupon code '" + code + "'")
                     .build();
@@ -59,6 +61,8 @@ public class CouponServiceImpl implements CouponService {
             return CouponValidationResponse.builder()
                     .valid(false)
                     .code(code)
+                    .description(coupon.getDescription())
+                    .discountValue(coupon.getDiscountValue())
                     .calculatedDiscount(BigDecimal.ZERO)
                     .message("Promotional code '" + code + "' is no longer active")
                     .build();
@@ -68,6 +72,10 @@ public class CouponServiceImpl implements CouponService {
             return CouponValidationResponse.builder()
                     .valid(false)
                     .code(code)
+                    .description(coupon.getDescription())
+                    .discountValue(coupon.getDiscountValue())
+                    .minOrderAmount(coupon.getMinOrderAmount())
+                    .maxDiscountAmount(coupon.getMaxDiscountAmount())
                     .calculatedDiscount(BigDecimal.ZERO)
                     .message("Promotional code '" + code + "' has expired")
                     .build();
@@ -77,6 +85,8 @@ public class CouponServiceImpl implements CouponService {
             return CouponValidationResponse.builder()
                     .valid(false)
                     .code(code)
+                    .description(coupon.getDescription())
+                    .discountValue(coupon.getDiscountValue())
                     .calculatedDiscount(BigDecimal.ZERO)
                     .message("Promotional code '" + code + "' has reached maximum redemption limit")
                     .build();
@@ -86,9 +96,13 @@ public class CouponServiceImpl implements CouponService {
             return CouponValidationResponse.builder()
                     .valid(false)
                     .code(code)
+                    .description(coupon.getDescription())
+                    .discountValue(coupon.getDiscountValue())
+                    .minOrderAmount(coupon.getMinOrderAmount())
+                    .maxDiscountAmount(coupon.getMaxDiscountAmount())
                     .calculatedDiscount(BigDecimal.ZERO)
                     .message(String.format(
-                            "Coupon '%s' requires a minimum order subtotal of $%.2f",
+                            "Coupon '%s' requires a minimum order subtotal of ৳%.2f",
                             code, coupon.getMinOrderAmount()))
                     .build();
         }
@@ -113,8 +127,11 @@ public class CouponServiceImpl implements CouponService {
         return CouponValidationResponse.builder()
                 .valid(true)
                 .code(coupon.getCode())
+                .description(coupon.getDescription())
                 .discountType(coupon.getDiscountType())
                 .discountValue(coupon.getDiscountValue())
+                .minOrderAmount(coupon.getMinOrderAmount())
+                .maxDiscountAmount(coupon.getMaxDiscountAmount())
                 .calculatedDiscount(calculatedDiscount)
                 .message("Coupon promo code applied successfully!")
                 .build();
@@ -123,8 +140,11 @@ public class CouponServiceImpl implements CouponService {
     @Override
     @Transactional(readOnly = true)
     public List<CouponDto> getActivePublicCoupons() {
+        LocalDateTime now = LocalDateTime.now();
         return couponRepository.findAll().stream()
                 .filter(Coupon::isActive)
+                // A coupon with no expiry never lapses; an expired one must not be offered again.
+                .filter(c -> c.getExpiryDate() == null || c.getExpiryDate().isAfter(now))
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
@@ -218,9 +238,10 @@ public class CouponServiceImpl implements CouponService {
 
     private CouponDto mapToDto(Coupon coupon) {
         return CouponDto.builder()
-                .id(coupon.getId())
-                .code(coupon.getCode())
-                .discountType(coupon.getDiscountType())
+        .id(coupon.getId())
+        .code(coupon.getCode())
+        .description(coupon.getDescription())
+        .discountType(coupon.getDiscountType())
                 .discountValue(coupon.getDiscountValue())
                 .minOrderAmount(coupon.getMinOrderAmount())
                 .maxDiscountAmount(coupon.getMaxDiscountAmount())

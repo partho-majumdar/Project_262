@@ -45,6 +45,17 @@ public class User {
     @Builder.Default
     private Role role = Role.ROLE_CUSTOMER;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "seller_status", nullable = false, length = 20)
+    @Builder.Default
+    private SellerStatus sellerStatus = SellerStatus.NONE;
+
+    @Column(name = "seller_status_reason", length = 500)
+    private String sellerStatusReason;
+
+    @Column(name = "seller_reviewed_at")
+    private LocalDateTime sellerReviewedAt;
+
     @Column(name = "enabled", nullable = false)
     @Builder.Default
     private boolean enabled = true;

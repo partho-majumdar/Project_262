@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
+import OrderPaymentDetails from '../components/common/OrderPaymentDetails';
 
 export default function OrderTrackingPage() {
   const [orders, setOrders] = useState([]);
@@ -29,7 +30,9 @@ export default function OrderTrackingPage() {
         const list = response.data?.data || response.data || [];
         setOrders(list);
         if (list.length > 0) {
-          setSelectedOrder(list[0]);
+          // Notifications link here with ?order=ORD-… so the right order opens, not just the newest
+          const wanted = new URLSearchParams(window.location.search).get('order');
+          setSelectedOrder(list.find((o) => o.orderNumber === wanted) || list[0]);
         }
       } catch (err) {
         console.error('Failed to fetch orders for tracking', err);
@@ -39,6 +42,28 @@ export default function OrderTrackingPage() {
     };
     fetchOrders();
   }, []);
+
+  /** What the delivery line should read for this order: an estimate, the day it arrived, or nothing to promise. */
+  const deliveryLabel = (order) => {
+    const format = (iso) =>
+      new Date(iso).toLocaleString(undefined, {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    if (order.status === 'DELIVERED') {
+      return { title: 'Delivered', value: order.deliveredAt ? format(order.deliveredAt) : 'Completed' };
+    }
+    if (order.status === 'CANCELLED' || order.status === 'REFUNDED') {
+      return { title: 'Delivery', value: order.status === 'CANCELLED' ? 'Order cancelled' : 'Order refunded' };
+    }
+    if (!order.estimatedDeliveryAt) {
+      return { title: 'Estimated Delivery', value: 'Being scheduled' };
+    }
+    return { title: 'Estimated Delivery', value: format(order.estimatedDeliveryAt) };
+  };
 
   const trackingSteps = [
     { label: 'Order Placed', desc: 'Received & Verification' },
@@ -57,19 +82,25 @@ export default function OrderTrackingPage() {
       case 'SHIPPED': return 3;
       case 'OUT_FOR_DELIVERY': return 4;
       case 'DELIVERED': return 5;
-      default: return 3; // Default realistic simulation for demo orders
+      // A cancelled or refunded order never travelled, so no step is complete
+      case 'CANCELLED':
+      case 'REFUNDED': return -1;
+      default: return 0;
     }
   };
 
-  const handleCancelOrder = async (orderId) => {
+  const handleCancelOrder = async (orderNumber) => {
     if (!window.confirm('Are you sure you want to cancel this order?')) return;
     setCancelling(true);
     try {
-      await axiosClient.put(`/orders/${orderId}/cancel`);
+      const response = await axiosClient.put(`/orders/${orderNumber}/cancel`);
+      // The response carries the refreshed payment and refund details
+      const updated = response?.data || null;
+      const merge = (o) => (updated ? { ...o, ...updated } : { ...o, status: 'CANCELLED' });
       alert('Order cancelled successfully.');
-      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: 'CANCELLED' } : o));
-      if (selectedOrder?.id === orderId) {
-        setSelectedOrder((prev) => ({ ...prev, status: 'CANCELLED' }));
+      setOrders((prev) => prev.map((o) => o.orderNumber === orderNumber ? merge(o) : o));
+      if (selectedOrder?.orderNumber === orderNumber) {
+        setSelectedOrder((prev) => merge(prev));
       }
     } catch (err) {
       alert(err.response?.data?.message || 'Order could not be cancelled as it is already shipped.');
@@ -136,8 +167,8 @@ export default function OrderTrackingPage() {
                   </div>
 
                   <div className="flex justify-between items-center text-[11px] text-slate-400">
-                    <span>{ord.orderItems?.length || 1} Item(s)</span>
-                    <span className="font-bold text-white font-mono">${ord.totalAmount ? ord.totalAmount.toFixed(2) : '0.00'}</span>
+                    <span>{ord.items?.length || 1} Item(s)</span>
+                    <span className="font-bold text-white font-mono">৳{ord.totalAmount ? ord.totalAmount.toFixed(2) : '0.00'}</span>
                   </div>
                 </div>
               ))}
@@ -168,7 +199,7 @@ export default function OrderTrackingPage() {
                     {selectedOrder.status !== 'CANCELLED' && selectedOrder.status !== 'DELIVERED' && (
                       <button
                         disabled={cancelling}
-                        onClick={() => handleCancelOrder(selectedOrder.id)}
+                        onClick={() => handleCancelOrder(selectedOrder.orderNumber)}
                         className="px-3.5 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                       >
                         <XCircle className="w-4 h-4" /> Cancel Order
@@ -180,8 +211,15 @@ export default function OrderTrackingPage() {
                 {/* 6-Stage Timeline Tracker */}
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-xs font-extrabold text-white flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-emerald-400" /> Estimated Delivery: <span className="text-emerald-400">Tomorrow by 5:00 PM</span>
+                    <h4 className="text-xs font-extrabold text-white flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <Clock className="w-4 h-4 text-emerald-400" />
+                      {deliveryLabel(selectedOrder).title}:{' '}
+                      <span className="text-emerald-400">{deliveryLabel(selectedOrder).value}</span>
+                      {selectedOrder.estimatedDeliveryNote && selectedOrder.status !== 'DELIVERED' && (
+                        <span className="w-full text-[11px] font-semibold text-amber-300">
+                          {selectedOrder.estimatedDeliveryNote}
+                        </span>
+                      )}
                     </h4>
                   </div>
 
@@ -216,19 +254,23 @@ export default function OrderTrackingPage() {
                 <div className="space-y-3 pt-4 border-t border-slate-800">
                   <h4 className="text-xs font-extrabold text-slate-300">Package Items</h4>
                   <div className="space-y-2">
-                    {selectedOrder.orderItems?.map((item) => (
+                    {selectedOrder.items?.map((item) => (
                       <div key={item.id} className="p-3 bg-slate-900/60 rounded-2xl border border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <img src={item.imageUrl || 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=100'} alt={item.productName} className="w-10 h-10 object-cover rounded-xl" />
                           <div>
                             <p className="text-xs font-bold text-white">{item.productName}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">Qty: {item.quantity} × ${item.price?.toFixed(2)}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">Qty: {item.quantity} × ৳{Number(item.unitPrice).toFixed(2)}</p>
                           </div>
                         </div>
-                        <span className="font-mono font-bold text-xs text-emerald-400">${(item.quantity * item.price).toFixed(2)}</span>
+                        <span className="font-mono font-bold text-xs text-emerald-400">৳{Number(item.subtotal).toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-800">
+                  <OrderPaymentDetails order={selectedOrder} />
                 </div>
 
               </div>

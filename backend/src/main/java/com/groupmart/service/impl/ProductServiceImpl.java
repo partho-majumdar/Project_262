@@ -24,6 +24,8 @@ import com.groupmart.repository.ProductRepository;
 import com.groupmart.repository.SellerStoreRepository;
 import com.groupmart.repository.UserRepository;
 import com.groupmart.service.ProductService;
+import com.groupmart.service.event.ProductChangedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -43,6 +45,7 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryRepository categoryRepository;
     private final SellerStoreRepository sellerStoreRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -137,6 +140,7 @@ public class ProductServiceImpl implements ProductService {
                 .build();
 
         Product saved = productRepository.save(product);
+        eventPublisher.publishEvent(new ProductChangedEvent(saved.getId()));
         return mapToDto(saved);
     }
 
@@ -182,6 +186,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Product updated = productRepository.save(product);
+        eventPublisher.publishEvent(new ProductChangedEvent(updated.getId()));
         return mapToDto(updated);
     }
 
@@ -204,6 +209,7 @@ public class ProductServiceImpl implements ProductService {
 
         product.setActive(false);
         productRepository.save(product);
+        eventPublisher.publishEvent(new ProductChangedEvent(product.getId()));
     }
 
     @Override
@@ -389,6 +395,7 @@ public class ProductServiceImpl implements ProductService {
                             .build();
 
                     Product saved = productRepository.save(product);
+                    eventPublisher.publishEvent(new ProductChangedEvent(saved.getId()));
                     created.add(mapToDto(saved));
                     success++;
 

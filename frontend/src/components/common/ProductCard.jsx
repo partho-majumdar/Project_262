@@ -264,11 +264,11 @@ export default function ProductCard({ product, onQuickView, onCompare }) {
       <div className="pt-3 border-t border-slate-800/80 space-y-2">
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-extrabold text-emerald-400">
-            {price != null ? `$${price.toFixed(2)}` : '—'}
+            {price != null ? `৳${price.toFixed(2)}` : '—'}
           </span>
           {compareAt != null && price != null && compareAt > price && (
             <span className="text-[10px] text-slate-500 line-through">
-              ${compareAt.toFixed(2)}
+              ৳{compareAt.toFixed(2)}
             </span>
           )}
         </div>

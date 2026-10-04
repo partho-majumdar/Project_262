@@ -66,7 +66,7 @@ export default function ReturnRequestModal({ isOpen, onClose, order }) {
           <form onSubmit={handleSubmitReturn} className="space-y-4 text-xs">
             
             <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl flex items-center justify-between text-slate-300">
-              <span className="font-semibold">Order Subtotal: ${order.totalAmount}</span>
+              <span className="font-semibold">Order Subtotal: ৳{order.totalAmount}</span>
               <span className="text-emerald-400 font-bold font-mono">100% Refund Guarantee</span>
             </div>
 

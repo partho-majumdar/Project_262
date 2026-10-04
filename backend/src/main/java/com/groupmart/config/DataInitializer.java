@@ -1,9 +1,13 @@
 package com.groupmart.config;
 
-import com.groupmart.entity.*;
+import com.groupmart.common.constant.PlatformSettingKeys;
+import com.groupmart.entity.Category;
+import com.groupmart.entity.PlatformSetting;
+import com.groupmart.entity.Role;
+import com.groupmart.entity.SellerStatus;
+import com.groupmart.entity.User;
 import com.groupmart.repository.CategoryRepository;
-import com.groupmart.repository.CouponRepository;
-import com.groupmart.repository.ProductRepository;
+import com.groupmart.repository.PlatformSettingRepository;
 import com.groupmart.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,453 +16,131 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class DataInitializer implements CommandLineRunner {
 
-    private final ProductRepository productRepository;
-    private final CategoryRepository categoryRepository;
-    private final CouponRepository couponRepository;
     private final UserRepository userRepository;
+    private final CategoryRepository categoryRepository;
+    private final PlatformSettingRepository platformSettingRepository;
     private final PasswordEncoder passwordEncoder;
 
-    // === NEW: Control seeding from properties ===
     @Value("${app.seed-data:false}")
     private boolean seedData;
 
     @Override
     public void run(String... args) throws Exception {
         if (!seedData) {
-            log.info("Data seeding is DISABLED (app.seed-data=false). Starting with clean / empty database.");
+            log.info("Data seeding is DISABLED. Starting with empty database.");
             return;
         }
 
-        log.info("Initializing GroupMart catalog data, categories & demo users...");
-        seedDemoUsersIfEmpty();
-        seedDefaultCategoriesIfEmpty();
-        seedShoeCatalogIfEmpty();
-        seedCouponsIfEmpty();
-        log.info("GroupMart data initialization complete!");
+        log.info("Seeding initial data...");
+        seedAdminOnly();
+        seedCategories();
+        seedSettings();
+        log.info("Initial data seeding complete!");
     }
 
-    private void seedDemoUsersIfEmpty() {
-        if (!userRepository.existsByEmail("customer@groupmart.com")) {
-            User customer = User.builder()
-                    .email("customer@groupmart.com")
-                    .password(passwordEncoder.encode("Customer@12345"))
-                    .firstName("Test")
-                    .lastName("Customer")
-                    .phone("+88 555-0192")
-                    .avatarUrl("https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop")
-                    .role(Role.ROLE_CUSTOMER)
-                    .enabled(true)
-                    .build();
-            userRepository.save(customer);
-            log.info("Seeded demo customer user: customer@groupmart.com");
-        }
-
-        if (!userRepository.existsByEmail("seller@groupmart.com")) {
-            User seller = User.builder()
-                    .email("seller@groupmart.com")
-                    .password(passwordEncoder.encode("Seller@12345"))
-                    .firstName("Marcus")
-                    .lastName("Vance")
-                    .phone("+88 555-0843")
-                    .avatarUrl("https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop")
-                    .role(Role.ROLE_SELLER)
-                    .enabled(true)
-                    .build();
-            userRepository.save(seller);
-            log.info("Seeded demo seller user: seller@groupmart.com");
-        }
-
+    private void seedAdminOnly() {
         if (!userRepository.existsByEmail("admin@groupmart.com")) {
             User admin = User.builder()
                     .email("admin@groupmart.com")
                     .password(passwordEncoder.encode("Admin@12345"))
-                    .firstName("Sarah")
-                    .lastName("Connor")
-                    .phone("+88 555-0999")
-                    .avatarUrl("https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&auto=format&fit=crop")
+                    .firstName("Admin")
+                    .lastName("User")
+                    .phone(null)
+                    .avatarUrl(null)
                     .role(Role.ROLE_ADMIN)
+                    .sellerStatus(SellerStatus.NONE)
                     .enabled(true)
                     .build();
             userRepository.save(admin);
-            log.info("Seeded demo admin user: admin@groupmart.com");
+            log.info("Seeded admin user: admin@groupmart.com");
+        } else {
+            log.info("Admin user already exists, skipping.");
         }
     }
 
-    private void seedDefaultCategoriesIfEmpty() {
-        String[][] defaultCategories = {
-            {"Electronics", "electronics", "Laptops, Smartphones, Smartwatches & Tech Accessories"},
-            {"Mobiles", "mobiles", "Smartphones, Mobile Accessories & 5G Devices"},
-            {"Laptops", "laptops", "Gaming Laptops, Ultrabooks & Workstations"},
-            {"Fashion", "fashion", "Men's & Women's Fashion Apparel"},
-            {"Clothing", "clothing", "Shirts, T-shirts, Jeans & Designer Wear"},
-            {"Shoes", "shoes", "Running Shoes, Sneakers, Casual & Formal Footwear"},
-            {"Sports", "sports", "Fitness Equipment, Sports Gear & Outdoor Goods"},
-            {"Home & Kitchen", "home-kitchen", "Home Appliances, Furniture & Kitchenware"},
-            {"Beauty", "beauty", "Cosmetics, Skincare, Makeup & Fragrances"},
-            {"Books", "books", "Bestselling Fiction, Non-Fiction & Textbooks"},
-            {"Toys", "toys", "Games, Action Figures & Educational Toys"},
-            {"Automotive", "automotive", "Car & Bike Accessories, Tools & Electronics"},
-            {"Grocery", "grocery", "Fresh Food, Beverages & Daily Essentials"}
-        };
-
-        for (String[] catData : defaultCategories) {
-            String name = catData[0];
-            String slug = catData[1];
-            String description = catData[2];
-
-            if (!categoryRepository.existsBySlug(slug)) {
-                Category category = Category.builder()
-                        .name(name)
-                        .slug(slug)
-                        .description(description)
-                        .active(true)
-                        .build();
-                categoryRepository.save(category);
-                log.info("Seeded category: {}", name);
-            }
+    private void seedCategories() {
+        if (categoryRepository.count() > 0) {
+            log.info("Categories already exist, skipping category seeding.");
+            return;
         }
-    }
 
-    private void seedShoeCatalogIfEmpty() {
-        Category shoesCategory = categoryRepository.findBySlug("shoes").orElse(null);
-        if (shoesCategory == null) return;
-
-        List<Product> shoesList = List.of(
-            Product.builder()
-                .name("Nike Air Max Pulse Sneakers")
-                .slug("nike-air-max-pulse-sneakers")
-                .sku("NEX-NIKE-PULSE-01")
-                .description("Next-gen air cushioning running shoes for high performance and daily comfort.")
-                .price(new BigDecimal("149.99"))
-                .compareAtPrice(new BigDecimal("179.99"))
-                .category(shoesCategory)
-                .stockQuantity(25)
-                .rating(4.8)
-                .reviewCount(142)
-                .imageUrls(List.of("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&auto=format&fit=crop"))
-                .featured(true)
-                .active(true)
-                .build(),
-
-            Product.builder()
-                .name("Adidas Ultraboost Light Running Shoes")
-                .slug("adidas-ultraboost-light-running-shoes")
-                .sku("NEX-ADI-BOOST-02")
-                .description("Ultralight responsive running footwear engineered for long distance runners.")
-                .price(new BigDecimal("189.99"))
-                .compareAtPrice(new BigDecimal("210.00"))
-                .category(shoesCategory)
-                .stockQuantity(18)
-                .rating(4.9)
-                .reviewCount(98)
-                .imageUrls(List.of("https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?w=800&auto=format&fit=crop"))
-                .featured(true)
-                .active(true)
-                .build(),
-
-            Product.builder()
-                .name("Puma Speedcat Pro Leather Casual Shoes")
-                .slug("puma-speedcat-pro-leather-casual-shoes")
-                .sku("NEX-PUMA-SPEED-03")
-                .description("Iconic motorsport-inspired premium leather casual sneakers.")
-                .price(new BigDecimal("119.99"))
-                .compareAtPrice(new BigDecimal("139.99"))
-                .category(shoesCategory)
-                .stockQuantity(30)
-                .rating(4.6)
-                .reviewCount(64)
-                .imageUrls(List.of("https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=800&auto=format&fit=crop"))
-                .featured(false)
-                .active(true)
-                .build(),
-
-            Product.builder()
-                .name("Woodland Waterproof Leather Outdoor Boots")
-                .slug("woodland-waterproof-leather-outdoor-boots")
-                .sku("NEX-WOOD-BOOT-04")
-                .description("Rugged all-terrain nubuck leather boots designed for hiking and outdoor adventure.")
-                .price(new BigDecimal("159.99"))
-                .compareAtPrice(new BigDecimal("189.99"))
-                .category(shoesCategory)
-                .stockQuantity(15)
-                .rating(4.7)
-                .reviewCount(112)
-                .imageUrls(List.of("https://images.unsplash.com/photo-1520639888713-7851133b1ed0?w=800&auto=format&fit=crop"))
-                .featured(true)
-                .active(true)
-                .build()
+        List<Category> categories = List.of(
+                Category.builder().name("Electronics").slug("electronics").description("Smartphones, laptops, audio, cameras, and more").imageUrl("https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Smartphones & Tablets").slug("smartphones-tablets").description("Mobile phones, tablets, and accessories").imageUrl("https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Laptops & Computers").slug("laptops-computers").description("Notebooks, desktops, components, and peripherals").imageUrl("https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Audio & Headphones").slug("audio-headphones").description("Headphones, speakers, earphones, and sound systems").imageUrl("https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Cameras & Photography").slug("cameras-photography").description("DSLR, mirrorless, action cameras, and lenses").imageUrl("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Gaming").slug("gaming").description("Consoles, accessories, gaming laptops, and VR").imageUrl("https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Smart Home & IoT").slug("smart-home-iot").description("Smart speakers, lights, security, and automation").imageUrl("https://images.unsplash.com/photo-1558002038-1055907df827?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Wearables").slug("wearables").description("Smart watches, fitness trackers, and VR headsets").imageUrl("https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Fashion").slug("fashion").description("Clothing, footwear, accessories, and jewelry").imageUrl("https://images.unsplash.com/photo-1445205170230-053b83016050?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Men's Fashion").slug("mens-fashion").description("Shirts, pants, suits, and men's accessories").imageUrl("https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Women's Fashion").slug("womens-fashion").description("Dresses, tops, skirts, and women's accessories").imageUrl("https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Shoes").slug("shoes").description("Sneakers, formal shoes, sandals, and boots").imageUrl("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Jewelry & Watches").slug("jewelry-watches").description("Rings, necklaces, bracelets, and luxury watches").imageUrl("https://images.unsplash.com/photo-1515562141589-67f0d569b6c2?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Home & Kitchen").slug("home-kitchen").description("Furniture, decor, kitchenware, and appliances").imageUrl("https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Furniture").slug("furniture").description("Sofas, beds, tables, chairs, and storage").imageUrl("https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Kitchen & Dining").slug("kitchen-dining").description("Cookware, cutlery, appliances, and tableware").imageUrl("https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Home Decor").slug("home-decor").description("Wall art, lighting, rugs, and decorative accessories").imageUrl("https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Beauty & Personal Care").slug("beauty-personal-care").description("Skincare, makeup, haircare, and grooming").imageUrl("https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Skincare").slug("skincare").description("Moisturizers, serums, cleansers, and sunscreens").imageUrl("https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Haircare").slug("haircare").description("Shampoos, conditioners, styling tools, and treatments").imageUrl("https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Makeup").slug("makeup").description("Lipsticks, eyeshadows, foundations, and brushes").imageUrl("https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Sports & Outdoors").slug("sports-outdoors").description("Exercise equipment, outdoor gear, and sportswear").imageUrl("https://images.unsplash.com/photo-1517649763962-0c623266010b?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Fitness & Training").slug("fitness-training").description("Gym equipment, yoga mats, dumbbells, and accessories").imageUrl("https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Outdoor Recreation").slug("outdoor-recreation").description("Camping, hiking, cycling, and water sports").imageUrl("https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Sportswear").slug("sportswear").description("Athletic shoes, workout clothes, and sports accessories").imageUrl("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Automotive").slug("automotive").description("Car parts, accessories, tools, and care products").imageUrl("https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Car Electronics").slug("car-electronics").description("Dash cams, GPS, car audio, and diagnostic tools").imageUrl("https://images.unsplash.com/photo-1558449028-b53a39d100fc?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Car Care").slug("car-care").description("Waxes, cleaners, interior care, and detailing kits").imageUrl("https://images.unsplash.com/photo-1520340356584-f9918d35f5d6?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Books & Media").slug("books-media").description("Fiction, non-fiction, textbooks, and audiobooks").imageUrl("https://images.unsplash.com/photo-1512820790803-83ca734da794?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Toys & Games").slug("toys-games").description("Board games, puzzles, action figures, and educational toys").imageUrl("https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Baby & Kids").slug("baby-kids").description("Strollers, car seats, clothing, and nursery items").imageUrl("https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Pet Supplies").slug("pet-supplies").description("Food, toys, grooming, and accessories for pets").imageUrl("https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Health & Wellness").slug("health-wellness").description("Vitamins, supplements, fitness gear, and medical supplies").imageUrl("https://images.unsplash.com/photo-1505576399279-538d247d5b8f?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Grocery & Gourmet Food").slug("grocery-gourmet-food").description("Organic foods, snacks, beverages, and specialty items").imageUrl("https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Office Supplies").slug("office-supplies").description("Stationery, printers, furniture, and organization").imageUrl("https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=600&auto=format&fit=crop").active(true).build(),
+                Category.builder().name("Industrial & Scientific").slug("industrial-scientific").description("Lab equipment, tools, safety gear, and materials").imageUrl("https://images.unsplash.com/photo-1581093458791-9f302e4d0169?w=600&auto=format&fit=crop").active(true).build()
         );
 
-        for (Product shoe : shoesList) {
-            if (!productRepository.existsBySlug(shoe.getSlug())) {
-                productRepository.save(shoe);
-            }
-        }
+        categoryRepository.saveAll(categories);
+        log.info("Seeded {} categories.", categories.size());
     }
 
-    private void seedCouponsIfEmpty() {
-        if (couponRepository.count() == 0) {
-            log.info("Seeding promotional discount coupons...");
+    /**
+     * Persists the canonical platform setting defaults. Runs per key so an existing
+     * value edited by an admin is never overwritten on restart.
+     */
+    private void seedSettings() {
+        Map<String, String> defaults = PlatformSettingKeys.defaults();
+        Map<String, String> descriptions = PlatformSettingKeys.descriptions();
 
-            Coupon c1 = Coupon.builder()
-                    .code("WELCOME10")
-                    .description("Welcome 10% promotional discount on your first order")
-                    .discountType(DiscountType.PERCENTAGE)
-                    .discountValue(new BigDecimal("10.00"))
-                    .minOrderAmount(new BigDecimal("50.00"))
-                    .expiryDate(LocalDateTime.now().plusMonths(6))
-                    .active(true)
-                    .build();
+        int created = 0;
+        for (Map.Entry<String, String> entry : defaults.entrySet()) {
+            String key = entry.getKey();
+            if (platformSettingRepository.findByKey(key).isPresent()) {
+                continue;
+            }
+            platformSettingRepository.save(PlatformSetting.builder()
+                    .key(key)
+                    .value(entry.getValue())
+                    .description(descriptions.get(key))
+                    .build());
+            created++;
+        }
 
-            Coupon c2 = Coupon.builder()
-                    .code("NEXUS50")
-                    .description("Flat $50 off on orders above $300")
-                    .discountType(DiscountType.FIXED_AMOUNT)
-                    .discountValue(new BigDecimal("50.00"))
-                    .minOrderAmount(new BigDecimal("300.00"))
-                    .expiryDate(LocalDateTime.now().plusMonths(6))
-                    .active(true)
-                    .build();
-
-            couponRepository.saveAll(List.of(c1, c2));
+        if (created > 0) {
+            log.info("Seeded {} platform settings.", created);
+        } else {
+            log.info("Platform settings already exist, skipping settings seeding.");
         }
     }
 }
-
-
-
-// package com.groupmart.config;
-
-// import lombok.RequiredArgsConstructor;
-// import lombok.extern.slf4j.Slf4j;
-// import org.springframework.boot.CommandLineRunner;
-// import org.springframework.security.crypto.password.PasswordEncoder;
-// import org.springframework.stereotype.Component;
-
-// import com.groupmart.entity.*;
-// import com.groupmart.repository.CategoryRepository;
-// import com.groupmart.repository.CouponRepository;
-// import com.groupmart.repository.ProductRepository;
-// import com.groupmart.repository.UserRepository;
-
-// import java.math.BigDecimal;
-// import java.time.LocalDateTime;
-// import java.util.List;
-
-// @Component
-// @RequiredArgsConstructor
-// @Slf4j
-// public class DataInitializer implements CommandLineRunner {
-
-//     private final ProductRepository productRepository;
-//     private final CategoryRepository categoryRepository;
-//     private final CouponRepository couponRepository;
-//     private final UserRepository userRepository;
-//     private final PasswordEncoder passwordEncoder;
-
-//     @Override
-//     public void run(String... args) throws Exception {
-//         log.info("Initializing GroupMart catalog data, categories & demo users...");
-//         seedDemoUsersIfEmpty();
-//         seedDefaultCategoriesIfEmpty();
-//         seedShoeCatalogIfEmpty();
-//         seedCouponsIfEmpty();
-//         log.info("GroupMart data initialization complete!");
-//     }
-
-//     private void seedDemoUsersIfEmpty() {
-//         if (!userRepository.existsByEmail("customer@groupmart.com")) {
-//             User customer = User.builder()
-//                     .email("customer@groupmart.com")
-//                     .password(passwordEncoder.encode("Customer@12345"))
-//                     .firstName("Test")
-//                     .lastName("Customer")
-//                     .phone("+88 555-0192")
-//                     .avatarUrl("https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop")
-//                     .role(Role.ROLE_CUSTOMER)
-//                     .enabled(true)
-//                     .build();
-//             userRepository.save(customer);
-//             log.info("Seeded demo customer user: customer@groupmart.com");
-//         }
-
-//         if (!userRepository.existsByEmail("seller@groupmart.com")) {
-//             User seller = User.builder()
-//                     .email("seller@groupmart.com")
-//                     .password(passwordEncoder.encode("Seller@12345"))
-//                     .firstName("Marcus")
-//                     .lastName("Vance")
-//                     .phone("+88 555-0843")
-//                     .avatarUrl("https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop")
-//                     .role(Role.ROLE_SELLER)
-//                     .enabled(true)
-//                     .build();
-//             userRepository.save(seller);
-//             log.info("Seeded demo seller user: seller@groupmart.com");
-//         }
-
-//         if (!userRepository.existsByEmail("admin@groupmart.com")) {
-//             User admin = User.builder()
-//                     .email("admin@groupmart.com")
-//                     .password(passwordEncoder.encode("Admin@12345"))
-//                     .firstName("Sarah")
-//                     .lastName("Connor")
-//                     .phone("+88 555-0999")
-//                     .avatarUrl("https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&auto=format&fit=crop")
-//                     .role(Role.ROLE_ADMIN)
-//                     .enabled(true)
-//                     .build();
-//             userRepository.save(admin);
-//             log.info("Seeded demo admin user: admin@groupmart.com");
-//         }
-//     }
-
-//     private void seedDefaultCategoriesIfEmpty() {
-//         String[][] defaultCategories = {
-//             {"Electronics", "electronics", "Laptops, Smartphones, Smartwatches & Tech Accessories"},
-//             {"Mobiles", "mobiles", "Smartphones, Mobile Accessories & 5G Devices"},
-//             {"Laptops", "laptops", "Gaming Laptops, Ultrabooks & Workstations"},
-//             {"Fashion", "fashion", "Men's & Women's Fashion Apparel"},
-//             {"Clothing", "clothing", "Shirts, T-shirts, Jeans & Designer Wear"},
-//             {"Shoes", "shoes", "Running Shoes, Sneakers, Casual & Formal Footwear"},
-//             {"Sports", "sports", "Fitness Equipment, Sports Gear & Outdoor Goods"},
-//             {"Home & Kitchen", "home-kitchen", "Home Appliances, Furniture & Kitchenware"},
-//             {"Beauty", "beauty", "Cosmetics, Skincare, Makeup & Fragrances"},
-//             {"Books", "books", "Bestselling Fiction, Non-Fiction & Textbooks"},
-//             {"Toys", "toys", "Games, Action Figures & Educational Toys"},
-//             {"Automotive", "automotive", "Car & Bike Accessories, Tools & Electronics"},
-//             {"Grocery", "grocery", "Fresh Food, Beverages & Daily Essentials"}
-//         };
-
-//         for (String[] catData : defaultCategories) {
-//             String name = catData[0];
-//             String slug = catData[1];
-//             String description = catData[2];
-
-//             if (!categoryRepository.existsBySlug(slug)) {
-//                 Category category = Category.builder()
-//                         .name(name)
-//                         .slug(slug)
-//                         .description(description)
-//                         .active(true)
-//                         .build();
-//                 categoryRepository.save(category);
-//                 log.info("Seeded category: {}", name);
-//             }
-//         }
-//     }
-
-//     private void seedShoeCatalogIfEmpty() {
-//         Category shoesCategory = categoryRepository.findBySlug("shoes").orElse(null);
-//         if (shoesCategory == null) return;
-
-//         List<Product> shoesList = List.of(
-//             Product.builder()
-//                 .name("Nike Air Max Pulse Sneakers")
-//                 .slug("nike-air-max-pulse-sneakers")
-//                 .sku("NEX-NIKE-PULSE-01")
-//                 .description("Next-gen air cushioning running shoes for high performance and daily comfort.")
-//                 .price(new BigDecimal("149.99"))
-//                 .compareAtPrice(new BigDecimal("179.99"))
-//                 .category(shoesCategory)
-//                 .stockQuantity(25)
-//                 .rating(4.8)
-//                 .reviewCount(142)
-//                 .imageUrls(List.of("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&auto=format&fit=crop"))
-//                 .featured(true)
-//                 .active(true)
-//                 .build(),
-
-//             Product.builder()
-//                 .name("Adidas Ultraboost Light Running Shoes")
-//                 .slug("adidas-ultraboost-light-running-shoes")
-//                 .sku("NEX-ADI-BOOST-02")
-//                 .description("Ultralight responsive running footwear engineered for long distance runners.")
-//                 .price(new BigDecimal("189.99"))
-//                 .compareAtPrice(new BigDecimal("210.00"))
-//                 .category(shoesCategory)
-//                 .stockQuantity(18)
-//                 .rating(4.9)
-//                 .reviewCount(98)
-//                 .imageUrls(List.of("https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?w=800&auto=format&fit=crop"))
-//                 .featured(true)
-//                 .active(true)
-//                 .build(),
-
-//             Product.builder()
-//                 .name("Puma Speedcat Pro Leather Casual Shoes")
-//                 .slug("puma-speedcat-pro-leather-casual-shoes")
-//                 .sku("NEX-PUMA-SPEED-03")
-//                 .description("Iconic motorsport-inspired premium leather casual sneakers.")
-//                 .price(new BigDecimal("119.99"))
-//                 .compareAtPrice(new BigDecimal("139.99"))
-//                 .category(shoesCategory)
-//                 .stockQuantity(30)
-//                 .rating(4.6)
-//                 .reviewCount(64)
-//                 .imageUrls(List.of("https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=800&auto=format&fit=crop"))
-//                 .featured(false)
-//                 .active(true)
-//                 .build(),
-
-//             Product.builder()
-//                 .name("Woodland Waterproof Leather Outdoor Boots")
-//                 .slug("woodland-waterproof-leather-outdoor-boots")
-//                 .sku("NEX-WOOD-BOOT-04")
-//                 .description("Rugged all-terrain nubuck leather boots designed for hiking and outdoor adventure.")
-//                 .price(new BigDecimal("159.99"))
-//                 .compareAtPrice(new BigDecimal("189.99"))
-//                 .category(shoesCategory)
-//                 .stockQuantity(15)
-//                 .rating(4.7)
-//                 .reviewCount(112)
-//                 .imageUrls(List.of("https://images.unsplash.com/photo-1520639888713-7851133b1ed0?w=800&auto=format&fit=crop"))
-//                 .featured(true)
-//                 .active(true)
-//                 .build()
-//         );
-
-//         for (Product shoe : shoesList) {
-//             if (!productRepository.existsBySlug(shoe.getSlug())) {
-//                 productRepository.save(shoe);
-//             }
-//         }
-//     }
-
-//     private void seedCouponsIfEmpty() {
-//         if (couponRepository.count() == 0) {
-//             log.info("Seeding promotional discount coupons...");
-
-//             Coupon c1 = Coupon.builder()
-//                     .code("WELCOME10")
-//                     .description("Welcome 10% promotional discount on your first order")
-//                     .discountType(DiscountType.PERCENTAGE)
-//                     .discountValue(new BigDecimal("10.00"))
-//                     .minOrderAmount(new BigDecimal("50.00"))
-//                     .expiryDate(LocalDateTime.now().plusMonths(6))
-//                     .active(true)
-//                     .build();
-
-//             Coupon c2 = Coupon.builder()
-//                     .code("NEXUS50")
-//                     .description("Flat $50 off on orders above $300")
-//                     .discountType(DiscountType.FIXED_AMOUNT)
-//                     .discountValue(new BigDecimal("50.00"))
-//                     .minOrderAmount(new BigDecimal("300.00"))
-//                     .expiryDate(LocalDateTime.now().plusMonths(6))
-//                     .active(true)
-//                     .build();
-
-//             couponRepository.saveAll(List.of(c1, c2));
-//         }
-//     }
-// }

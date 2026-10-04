@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Package, 
-  Clock, 
-  Truck, 
-  CheckCircle2, 
-  XCircle, 
-  ArrowRight, 
+import {
+  Package,
+  Clock,
+  Truck,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
   Eye,
   FileText,
   RefreshCw,
-  MapPin
+  MapPin,
+  Star
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 import ReturnRequestModal from '../components/common/ReturnRequestModal';
@@ -20,6 +21,44 @@ export default function OrdersHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedReturnOrder, setSelectedReturnOrder] = useState(null);
+  // productId -> { eligible, reason }, for the review action on delivered lines.
+  const [reviewState, setReviewState] = useState({});
+
+  // Reviews are earned by delivery, so only delivered lines can offer the action. Collect their
+  // product ids once and resolve them all in a single request.
+  const reviewableProductIds = useMemo(() => {
+    const ids = new Set();
+    orders.forEach((order) => {
+      if (order.status !== 'DELIVERED') return;
+      (order.items || []).forEach((item) => item.productId && ids.add(item.productId));
+    });
+    return Array.from(ids);
+  }, [orders]);
+
+  useEffect(() => {
+    if (reviewableProductIds.length === 0) {
+      setReviewState({});
+      return;
+    }
+    let cancelled = false;
+    axiosClient
+      .get('/reviews/eligibility', { params: { productIds: reviewableProductIds } })
+      .then((res) => {
+        if (cancelled) return;
+        const list = res?.data?.data ?? res?.data ?? [];
+        const map = {};
+        (Array.isArray(list) ? list : []).forEach((entry) => {
+          map[entry.productId] = entry;
+        });
+        setReviewState(map);
+      })
+      .catch(() => {
+        if (!cancelled) setReviewState({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewableProductIds]);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -170,28 +209,48 @@ export default function OrdersHistoryPage() {
 
                 {/* Order Items List */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex items-center gap-3 p-2 bg-slate-900/60 rounded-xl border border-slate-800/80">
-                      <div className="w-12 h-12 bg-slate-950 rounded-lg overflow-hidden border border-slate-800 shrink-0">
-                        <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                  {order.items.map((item) => {
+                    const review = order.status === 'DELIVERED' ? reviewState[item.productId] : null;
+                    return (
+                      <div key={item.id} className="flex items-center gap-3 p-2 bg-slate-900/60 rounded-xl border border-slate-800/80">
+                        <div className="w-12 h-12 bg-slate-950 rounded-lg overflow-hidden border border-slate-800 shrink-0">
+                          <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 text-xs space-y-0.5">
+                          <p className="font-semibold text-white line-clamp-1">{item.productName}</p>
+                          <p className="text-slate-400">{item.quantity} x ৳{item.unitPrice.toFixed(2)}</p>
+                          {review && (
+                            review.eligible ? (
+                              <Link
+                                to={`/products/${item.productSlug}?review=1`}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 hover:text-amber-200"
+                              >
+                                <Star className="w-3 h-3" /> Write a review
+                              </Link>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                                <CheckCircle2 className="w-3 h-3" /> {review.reason}
+                              </span>
+                            )
+                          )}
+                        </div>
+                        <span className="font-bold text-white text-xs pr-2">৳{item.subtotal.toFixed(2)}</span>
                       </div>
-                      <div className="flex-1 text-xs space-y-0.5">
-                        <p className="font-semibold text-white line-clamp-1">{item.productName}</p>
-                        <p className="text-slate-400">{item.quantity} x ${item.unitPrice.toFixed(2)}</p>
-                      </div>
-                      <span className="font-bold text-white text-xs pr-2">${item.subtotal.toFixed(2)}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Order Footer */}
                 <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium">
                     Payment Method: <strong className="text-white">{order.paymentMethod}</strong> ({order.paymentStatus})
+                    {Number(order.paymentDetails?.refundedAmount) > 0 && (
+                      <span className="text-sky-300"> · Refunded ৳{Number(order.paymentDetails.refundedAmount).toFixed(2)}</span>
+                    )}
                   </span>
 
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-extrabold text-white">Total: ${order.totalAmount.toFixed(2)}</span>
+                    <span className="text-sm font-extrabold text-white">Total: ৳{order.totalAmount.toFixed(2)}</span>
                     <Link
                       to={`/orders/confirmation/${order.orderNumber}`}
                       className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white rounded-xl transition-all"

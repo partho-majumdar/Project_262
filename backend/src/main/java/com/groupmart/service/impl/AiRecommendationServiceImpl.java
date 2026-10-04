@@ -1,24 +1,38 @@
 package com.groupmart.service.impl;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import com.groupmart.common.exception.ResourceNotFoundException;
 import com.groupmart.dto.ai.AiChatRequest;
 import com.groupmart.dto.ai.AiChatResponse;
 import com.groupmart.dto.ai.RecommendationResponse;
 import com.groupmart.dto.product.ProductDto;
+import com.groupmart.entity.Category;
 import com.groupmart.entity.Order;
 import com.groupmart.entity.OrderItem;
 import com.groupmart.entity.Product;
 import com.groupmart.entity.User;
-import com.groupmart.repository.*;
+import com.groupmart.repository.CategoryRepository;
+import com.groupmart.repository.OrderRepository;
+import com.groupmart.repository.ProductRepository;
+import com.groupmart.repository.UserRepository;
+import com.groupmart.repository.WishlistRepository;
 import com.groupmart.service.AiRecommendationService;
+import com.groupmart.service.AiAssistantService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.util.*;
-import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +42,20 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
     private final OrderRepository orderRepository;
     private final WishlistRepository wishlistRepository;
     private final UserRepository userRepository;
+    private final CategoryRepository categoryRepository;
+    private final AiAssistantService aiAssistantService;
+
+    @Value("${gemini.api.key:}")
+    private String geminiApiKey;
+
+    @Value("${gemini.api.url:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent}")
+    private String geminiApiUrl;
+
+    @Value("${gemini.model:gemini-2.0-flash}")
+    private String geminiModel;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HttpClient httpClient = HttpClient.newHttpClient();
 
     @Override
     @Transactional(readOnly = true)
@@ -55,7 +83,6 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
                     .build();
         }
 
-        // Gather user category preference affinities from past orders and wishlist
         Map<UUID, Integer> categoryAffinity = new HashMap<>();
 
         List<Order> orders = orderRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
@@ -88,7 +115,6 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
                     .build();
         }
 
-        // Sort categories by highest score
         UUID preferredCategoryId = categoryAffinity.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
@@ -149,7 +175,7 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
                     .sorted(Comparator.comparing(Product::getPrice))
                     .limit(3)
                     .collect(Collectors.toList());
-            reply = "Here are our best budget deals and discounted items under $200:";
+            reply = "Here are our best budget deals and discounted items under ৳200:";
         } else {
             intent = "CATALOG_SEARCH";
             matchedProducts = productRepository.findByFeaturedTrueAndActiveTrue().stream()
@@ -158,11 +184,71 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
             reply = "Hello! I am GMart AI, your personal commerce assistant. Based on your prompt, here are our overall top recommended products:";
         }
 
+        String aiEnhanced = callAiEnhancement(msg, matchedProducts);
+        if (aiEnhanced != null && !aiEnhanced.isBlank()) {
+            reply = aiEnhanced;
+        }
+
         return AiChatResponse.builder()
                 .reply(reply)
                 .intentDetected(intent)
                 .recommendedProducts(matchedProducts.stream().map(this::mapToDto).collect(Collectors.toList()))
                 .build();
+    }
+
+    private String callAiEnhancement(String userMessage, List<Product> matchedProducts) {
+        if (geminiApiKey == null || geminiApiKey.isBlank()) {
+            return null;
+        }
+
+        try {
+            StringBuilder catalogContext = new StringBuilder();
+            catalogContext.append("You are GroupMart AI. Prices are in Bangladeshi Taka (BDT), written with the ৳ sign. Here is our live catalog:\n");
+            for (Product p : matchedProducts) {
+                String catName = p.getCategory() != null ? p.getCategory().getName() : "General";
+                catalogContext.append("- ").append(p.getName())
+                        .append(" | ").append(catName)
+                        .append(" | ৳").append(p.getPrice())
+                        .append(" | Stock: ").append(p.getStockQuantity()).append("\n");
+            }
+            catalogContext.append("\nUser query: ").append(userMessage).append("\n\n");
+            catalogContext.append("Provide a short, friendly 1-2 sentence recommendation citing the products above.");
+
+            String requestBody = objectMapper.writeValueAsString(Map.of(
+                    "contents", List.of(Map.of(
+                            "parts", List.of(
+                                    Map.of("text", catalogContext.toString())
+                            )
+                    )),
+                    "generationConfig", Map.of(
+                            "temperature", 0.4,
+                            "maxOutputTokens", 256
+                    )
+            ));
+
+            String url = geminiApiUrl + "?key=" + geminiApiKey;
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode candidates = root.path("candidates");
+                if (candidates.isArray() && candidates.size() > 0) {
+                    JsonNode textNode = candidates.get(0).path("content").path("parts").get(0).path("text");
+                    if (textNode.isTextual()) {
+                        return textNode.asText().trim();
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            return null;
+        }
+        return null;
     }
 
     private ProductDto mapToDto(Product product) {

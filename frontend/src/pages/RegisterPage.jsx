@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { User, Mail, Lock, Phone, UserPlus, Sparkles, AlertCircle, Store, ShoppingBag } from 'lucide-react';
+import { User, Mail, Lock, Phone, UserPlus, Sparkles, AlertCircle } from 'lucide-react';
+import { Roles, ROUTES } from '../constants/roles';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -10,7 +11,6 @@ export default function RegisterPage() {
     email: '',
     phone: '',
     password: '',
-    role: 'ROLE_CUSTOMER',
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -38,8 +38,8 @@ export default function RegisterPage() {
 
     setSubmitting(true);
     try {
-      await register(formData);
-      navigate('/');
+      await register({ ...formData, role: Roles.CUSTOMER });
+      navigate(ROUTES.CUSTOMER_DASHBOARD);
     } catch (err) {
       setError(err.message || 'Registration failed. Please try again.');
     } finally {
@@ -50,17 +50,20 @@ export default function RegisterPage() {
   return (
     <div className="min-h-[85vh] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg space-y-6">
-        
-        {/* Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nexus-950 border border-nexus-500/30 text-nexus-400 text-xs font-semibold">
             <Sparkles className="w-3.5 h-3.5" /> Join GroupMart AI
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">Create Your Account</h1>
-          <p className="text-xs text-slate-400">Choose your account type and start shopping or selling with AI</p>
+          <p className="text-xs text-slate-400">
+            Sign up as a customer to shop the marketplace. Want to sell?{' '}
+            <Link to={ROUTES.SELLER_REGISTER} className="text-emerald-400 hover:text-emerald-300 font-semibold">
+              Register as a seller directly
+            </Link>
+            .
+          </p>
         </div>
 
-        {/* Form Container */}
         <div className="glass-panel p-6 sm:p-8 rounded-3xl shadow-xl">
           {error && (
             <div className="mb-6 p-3.5 bg-rose-950/60 border border-rose-800/60 rounded-xl text-rose-300 text-xs flex items-center gap-2">
@@ -70,38 +73,6 @@ export default function RegisterPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            
-            {/* Role Selection */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Account Type</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, role: 'ROLE_CUSTOMER' })}
-                  className={`p-3 rounded-xl border flex items-center gap-2.5 transition-all text-xs font-semibold ${
-                    formData.role === 'ROLE_CUSTOMER'
-                      ? 'bg-nexus-900/90 border-nexus-500 text-white shadow-md'
-                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <ShoppingBag className="w-4 h-4 text-nexus-400" /> Customer Account
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, role: 'ROLE_SELLER' })}
-                  className={`p-3 rounded-xl border flex items-center gap-2.5 transition-all text-xs font-semibold ${
-                    formData.role === 'ROLE_SELLER'
-                      ? 'bg-nexus-900/90 border-nexus-500 text-white shadow-md'
-                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Store className="w-4 h-4 text-emerald-400" /> Seller / Merchant
-                </button>
-              </div>
-            </div>
-
-            {/* Name Fields */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-300">First Name</label>
@@ -136,7 +107,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Email Field */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">Email Address</label>
               <div className="relative">
@@ -153,7 +123,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Phone Field */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">Phone Number (Optional)</label>
               <div className="relative">
@@ -169,7 +138,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Password Field */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">Password</label>
               <div className="relative">
@@ -186,7 +154,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={submitting}
@@ -196,18 +163,26 @@ export default function RegisterPage() {
                 <span>Creating Account...</span>
               ) : (
                 <>
-                  <UserPlus className="w-4 h-4" /> Register Account
+                  <UserPlus className="w-4 h-4" /> Create Customer Account
                 </>
               )}
             </button>
           </form>
 
-          {/* Footer link */}
-          <div className="mt-6 text-center text-xs text-slate-400 border-t border-slate-800/80 pt-4">
-            Already registered?{' '}
-            <Link to="/login" className="text-nexus-400 font-semibold hover:underline">
-              Sign In to Your Account
-            </Link>
+          <div className="mt-6 text-center text-xs text-slate-400 border-t border-slate-800/80 pt-4 space-y-1">
+            <p>
+              Already registered?{' '}
+              <Link to={ROUTES.LOGIN} className="text-nexus-400 font-semibold hover:underline">
+                Sign In to Your Account
+              </Link>
+            </p>
+            <p>
+              Want to sell on GroupMart?{' '}
+              <Link to={ROUTES.SELLER_REGISTER} className="text-emerald-400 font-semibold hover:underline">
+                Register as a seller
+              </Link>
+              .
+            </p>
           </div>
         </div>
       </div>

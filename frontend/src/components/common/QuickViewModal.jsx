@@ -183,11 +183,11 @@ export default function QuickViewModal({ isOpen, onClose, product }) {
 
               <div className="flex items-baseline gap-3">
                 <span className="text-2xl font-black text-emerald-400">
-                  {price != null ? `$${price.toFixed(2)}` : '—'}
+                  {price != null ? `৳${price.toFixed(2)}` : '—'}
                 </span>
                 {compareAt != null && price != null && compareAt > price && (
                   <span className="text-xs text-slate-500 line-through">
-                    ${compareAt.toFixed(2)}
+                    ৳{compareAt.toFixed(2)}
                   </span>
                 )}
               </div>

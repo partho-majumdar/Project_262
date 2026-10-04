@@ -2,6 +2,7 @@ package com.groupmart.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,6 +21,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/payments")
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentController {
 
     private final PaymentService paymentService;
@@ -30,12 +32,20 @@ public class PaymentController {
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody PaymentIntentRequest request
     ) {
+        log.warn("SANDBOX payment gateway invoked for user={} amount={} — NOT connected to a real PSP.", userDetails.getUsername(), request.getAmount());
         PaymentIntentResponse response = paymentService.createPaymentIntent(userDetails.getUsername(), request);
         return ResponseEntity.ok(ApiResponse.success("Payment intent created successfully", response));
     }
 
+    /**
+     * Sandbox-only webhook. Accepts unsigned completion events so the demo flow
+     * can mark orders paid without a real PSP. Must NOT be exposed in production
+     * without HMAC signature verification and idempotency keys.
+     */
+    @Deprecated
     @PostMapping("/webhook")
     public ResponseEntity<ApiResponse<PaymentTransactionDto>> handleWebhook(@Valid @RequestBody PaymentWebhookRequest request) {
+        log.warn("SANDBOX payment webhook invoked transactionId={} status={} — NOT a real PSP callback.", request.getTransactionId(), request.getStatus());
         PaymentTransactionDto dto = paymentService.processPaymentWebhook(request);
         return ResponseEntity.ok(ApiResponse.success("Payment webhook processed", dto));
     }

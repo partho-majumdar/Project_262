@@ -3,20 +3,21 @@ package com.groupmart.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.groupmart.common.exception.ApiException;
 import com.groupmart.common.exception.ResourceNotFoundException;
 import com.groupmart.dto.admin.*;
 import com.groupmart.dto.seller.SellerStoreDto;
 import com.groupmart.entity.AuditLog;
 import com.groupmart.entity.Role;
+import com.groupmart.entity.SellerStatus;
 import com.groupmart.entity.SellerStore;
 import com.groupmart.entity.User;
 import com.groupmart.repository.AuditLogRepository;
 import com.groupmart.repository.CategoryRepository;
+import com.groupmart.repository.OrderRepository;
+import com.groupmart.repository.ProductRepository;
 import com.groupmart.repository.SellerStoreRepository;
 import com.groupmart.repository.UserRepository;
 import com.groupmart.service.AdminService;
@@ -35,6 +36,8 @@ public class AdminServiceImpl implements AdminService {
     private final SellerStoreRepository sellerStoreRepository;
     private final CategoryRepository categoryRepository;
     private final AuditLogRepository auditLogRepository;
+    private final ProductRepository productRepository;
+    private final OrderRepository orderRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -42,9 +45,14 @@ public class AdminServiceImpl implements AdminService {
         long totalUsers = userRepository.count();
         long totalSellers = sellerStoreRepository.count();
         long totalCategories = categoryRepository.count();
-        long pendingVerifications = sellerStoreRepository.findAll().stream()
+        long pendingSellerApplications = userRepository.findAll().stream()
+                .filter(u -> u.getSellerStatus() == SellerStatus.PENDING)
+                .count();
+        long pendingStoreVerifications = sellerStoreRepository.findAll().stream()
                 .filter(s -> !s.isVerified())
                 .count();
+
+        BigDecimal revenue = orderRepository.sumPaidRevenue();
 
         List<AuditLogDto> recentLogs = auditLogRepository.findTop20ByOrderByCreatedAtDesc()
                 .stream()
@@ -55,10 +63,10 @@ public class AdminServiceImpl implements AdminService {
                 .totalUsers(totalUsers)
                 .totalSellers(totalSellers)
                 .totalCategories(totalCategories)
-                .totalProducts(0)
-                .totalOrders(0)
-                .totalPlatformRevenue(new BigDecimal("98450.00"))
-                .pendingSellerVerifications(pendingVerifications)
+                .totalProducts(productRepository.count())
+                .totalOrders(orderRepository.count())
+                .totalPlatformRevenue(revenue != null ? revenue : BigDecimal.ZERO)
+                .pendingSellerVerifications(pendingSellerApplications + pendingStoreVerifications)
                 .recentAuditLogs(recentLogs)
                 .build();
     }

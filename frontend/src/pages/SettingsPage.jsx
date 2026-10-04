@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Settings, 
   User, 
@@ -18,14 +18,22 @@ import {
   EyeOff
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import NotificationPreferences from '../components/common/NotificationPreferences';
 
-export default function SettingsPage() {
+export default function SettingsPage() {
+  // The notification bell links here as /settings#notifications
+  const notificationsRef = useRef(null);
+  useEffect(() => {
+    if (window.location.hash === '#notifications') {
+      notificationsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
   const { user, logout } = useAuth();
 
-  const [firstName, setFirstName] = useState(user?.firstName || 'John');
-  const [lastName, setLastName] = useState(user?.lastName || 'Doe');
-  const [email, setEmail] = useState(user?.email || 'customer@groupmart.com');
-  const [phone, setPhone] = useState(user?.phone || '+88 (555) 234-5678');
+  const [firstName, setFirstName] = useState(user?.firstName || '');
+  const [lastName, setLastName] = useState(user?.lastName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
 
   // Security
   const [currentPassword, setCurrentPassword] = useState('');
@@ -35,7 +43,7 @@ export default function SettingsPage() {
 
   // Preferences
   const [language, setLanguage] = useState('en-US');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('BDT');
   const [themeMode, setThemeMode] = useState('dark');
   const [emailNotifications, setEmailNotifications] = useState(true);
 
@@ -179,10 +187,7 @@ export default function SettingsPage() {
                   onChange={(e) => setCurrency(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white"
                 >
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="GBP">GBP (£)</option>
-                  <option value="INR">INR (₹)</option>
+                  <option value="BDT">BDT (৳)</option>
                 </select>
               </div>
 
@@ -211,6 +216,10 @@ export default function SettingsPage() {
                 className="w-4 h-4 accent-nexus-600 rounded"
               />
             </div>
+          </div>
+
+          <div id="notifications" ref={notificationsRef} className="scroll-mt-24">
+            <NotificationPreferences />
           </div>
 
         </div>

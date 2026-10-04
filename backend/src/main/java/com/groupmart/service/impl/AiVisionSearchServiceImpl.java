@@ -63,7 +63,7 @@ public class AiVisionSearchServiceImpl implements AiVisionSearchService {
         ProductDto dto2 = mapToDto(p2);
 
         Map<String, String> matrix = new LinkedHashMap<>();
-        matrix.put("Price", String.format("$%s vs $%s", p1.getPrice(), p2.getPrice()));
+        matrix.put("Price", String.format("৳%s vs ৳%s", p1.getPrice(), p2.getPrice()));
         matrix.put("Rating", String.format("%.1f ★ vs %.1f ★", p1.getRating(), p2.getRating()));
         matrix.put("Reviews Count", String.format("%d reviews vs %d reviews", p1.getReviewCount(), p2.getReviewCount()));
         matrix.put("Stock Availability", String.format("%d in stock vs %d in stock", p1.getStockQuantity(), p2.getStockQuantity()));
@@ -79,13 +79,13 @@ public class AiVisionSearchServiceImpl implements AiVisionSearchService {
 
         List<String> p1Pros = List.of(
                 "Rating: " + p1.getRating() + " stars",
-                "Price: $" + p1.getPrice(),
+                "Price: ৳" + p1.getPrice(),
                 "Stock: " + p1.getStockQuantity() + " units available"
         );
 
         List<String> p2Pros = List.of(
                 "Rating: " + p2.getRating() + " stars",
-                "Price: $" + p2.getPrice(),
+                "Price: ৳" + p2.getPrice(),
                 "Stock: " + p2.getStockQuantity() + " units available"
         );
 

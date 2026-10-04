@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -18,11 +18,14 @@ import {
   Plus,
   X,
   ImageOff,
+  Users,
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
+import { groupBuyApi } from '../api/groupBuyApi';
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { addToCart } = useCart();
   const { isAuthenticated } = useAuth();
 
@@ -37,6 +40,7 @@ export default function ProductDetailPage() {
   const [summary, setSummary] = useState(null);
   const [similarProducts, setSimilarProducts] = useState([]);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewEligibility, setReviewEligibility] = useState(null);
   const [newRating, setNewRating] = useState(5);
   const [newTitle, setNewTitle] = useState('');
   const [newComment, setNewComment] = useState('');
@@ -44,6 +48,18 @@ export default function ProductDetailPage() {
 
   const [wishlisted, setWishlisted] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [groupDeals, setGroupDeals] = useState([]);
+
+  useEffect(() => {
+    if (!product?.id) {
+      setGroupDeals([]);
+      return;
+    }
+    groupBuyApi
+      .getDealsForProduct(product.id)
+      .then((deals) => setGroupDeals(Array.isArray(deals) ? deals : []))
+      .catch(() => setGroupDeals([]));
+  }, [product?.id]);
 
   const fetchProduct = async () => {
     setLoading(true);
@@ -105,6 +121,43 @@ export default function ProductDetailPage() {
     fetchProduct();
   }, [slug]);
 
+  // Reviews are earned by delivery, so the write form only appears once the server confirms this
+  // customer actually received the product. Anything else gets the explanation instead.
+  useEffect(() => {
+    if (!isAuthenticated || !product?.id) {
+      setReviewEligibility(null);
+      return;
+    }
+    let cancelled = false;
+    axiosClient
+      .get(`/reviews/product/${product.id}/eligibility`)
+      .then((res) => {
+        if (!cancelled) setReviewEligibility(res?.data?.data ?? res?.data ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setReviewEligibility(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, product?.id]);
+
+  // Arriving from the orders page with ?review=1 opens the form the moment the server confirms
+  // eligibility, so the link never lands on a dead "Write a review" button.
+  useEffect(() => {
+    if (reviewEligibility?.eligible && searchParams.get('review') === '1') {
+      setIsReviewModalOpen(true);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('review');
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [reviewEligibility, searchParams, setSearchParams]);
+
   const handleAddToCart = async () => {
     if (!product?.id) return;
     setAddingToCart(true);
@@ -163,6 +216,7 @@ export default function ProductDetailPage() {
       setNewTitle('');
       setNewComment('');
       setNewRating(5);
+      setReviewEligibility((current) => ({ ...current, eligible: false, reason: 'You have already reviewed this product.' }));
       fetchProduct();
     } catch (err) {
       alert(err.message || 'Failed to submit review');
@@ -244,7 +298,7 @@ export default function ProductDetailPage() {
             )}
             {compareAt != null && price != null && compareAt > price && (
               <span className="absolute top-4 left-4 bg-rose-600 text-white text-xs font-bold px-3 py-1 rounded-lg">
-                Save ${(compareAt - price).toFixed(2)}
+                Save ৳{(compareAt - price).toFixed(2)}
               </span>
             )}
           </div>
@@ -309,12 +363,35 @@ export default function ProductDetailPage() {
 
           <div className="p-4 bg-slate-900/90 border border-slate-800 rounded-2xl flex items-baseline gap-3">
             <span className="text-3xl font-extrabold text-white">
-              {price != null ? `$${price.toFixed(2)}` : '—'}
+              {price != null ? `৳${price.toFixed(2)}` : '—'}
             </span>
             {compareAt != null && price != null && compareAt > price && (
-              <span className="text-sm text-slate-500 line-through">${compareAt.toFixed(2)}</span>
+              <span className="text-sm text-slate-500 line-through">৳{compareAt.toFixed(2)}</span>
             )}
           </div>
+
+          {groupDeals.length > 0 && (
+            <Link
+              to={`/group-deals/${groupDeals[0].id}`}
+              className="block p-4 rounded-2xl border border-emerald-700/60 bg-gradient-to-r from-emerald-950/60 to-nexus-950/60 hover:border-emerald-500 transition"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5" /> Group buy available
+                  </span>
+                  <p className="text-sm font-bold text-white">
+                    Team up and pay as low as ৳{Number(groupDeals[0].lowestPrice).toFixed(2)} (
+                    {Number(groupDeals[0].maxDiscountPercent)}% off)
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {groupDeals[0].openGroupCount} open group(s) · {groupDeals[0].totalParticipants} shoppers joined
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-emerald-400 shrink-0" />
+              </div>
+            </Link>
+          )}
 
           <div className="text-xs">
             {inStock ? (
@@ -392,12 +469,20 @@ export default function ProductDetailPage() {
             <MessageSquare className="w-5 h-5 text-nexus-400" /> Reviews
           </h2>
           {isAuthenticated ? (
-            <button
-              onClick={() => setIsReviewModalOpen(true)}
-              className="px-4 py-2 bg-nexus-600 hover:bg-nexus-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" /> Write a review
-            </button>
+            reviewEligibility?.eligible ? (
+              <button
+                onClick={() => setIsReviewModalOpen(true)}
+                className="px-4 py-2 bg-nexus-600 hover:bg-nexus-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Write a review
+              </button>
+            ) : (
+              <p className="text-[11px] text-slate-500 max-w-xs text-right sm:text-left flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                {reviewEligibility?.reason ||
+                  'Only customers whose order for this product has been delivered can review it.'}
+              </p>
+            )
           ) : (
             <Link
               to="/login"
@@ -553,7 +638,7 @@ export default function ProductDetailPage() {
                   )}
                   <h4 className="font-bold text-white text-xs line-clamp-2">{prod.name}</h4>
                   <span className="text-sm font-extrabold text-emerald-400">
-                    {prod.price != null ? `$${Number(prod.price).toFixed(2)}` : '—'}
+                    {prod.price != null ? `৳${Number(prod.price).toFixed(2)}` : '—'}
                   </span>
                 </div>
               </Link>

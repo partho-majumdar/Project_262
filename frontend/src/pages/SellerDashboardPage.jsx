@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Store,
-  DollarSign,
   Package,
   AlertTriangle,
   CheckCircle2,
@@ -9,16 +8,11 @@ import {
   Download,
   Layers,
   Plus,
-  BarChart3,
-  Percent,
   RefreshCw,
   FileSpreadsheet,
   X,
   Search,
-  ShoppingCart,
-  Users,
   Sparkles,
-  Settings,
   Edit3,
   Trash2,
   Copy,
@@ -26,6 +20,22 @@ import {
   Send,
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ROUTES, SellerStatus } from '../constants/roles';
+import SellerGroupBuysTab from '../components/seller/groupbuy/SellerGroupBuysTab';
+import SellerWholesaleTab from '../components/seller/wholesale/SellerWholesaleTab';
+import SellerReverseTab from '../components/seller/reverse/SellerReverseTab';
+import SellerAuctionTab from '../components/seller/auction/SellerAuctionTab';
+import SellerProxyAuctionTab from '../components/seller/proxyAuction/SellerProxyAuctionTab';
+import SellerGroupReverseTab from '../components/seller/groupr/SellerGroupReverseTab';
+import SellerOverviewTab from '../components/seller/overview/SellerOverviewTab';
+
+/** Must stay in sync with the tab rail in SellerLayout so an unknown ?tab= never blanks the page. */
+const SELLER_TABS = [
+  'overview', 'products', 'inventory', 'orders', 'group-buys', 'wholesale', 'reverse-group-buying',
+  'group-reverse', 'auctions', 'group-buying-auctions', 'customers', 'marketing', 'finance', 'ai-hub',
+  'settings',
+];
 
 const emptyProductForm = {
   id: null,
@@ -46,7 +56,13 @@ function money(value) {
 }
 
 export default function SellerDashboardPage() {
-  const [activeSubTab, setActiveSubTab] = useState('overview');
+  const [searchParams] = useSearchParams();
+  const [activeSubTab, setActiveSubTab] = useState(() => searchParams.get('tab') || 'overview');
+
+  // The rail in SellerLayout owns the ?tab= query, so follow it on back/forward and direct links.
+  useEffect(() => {
+    setActiveSubTab(SELLER_TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'overview');
+  }, [searchParams]);
   const [store, setStore] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [products, setProducts] = useState([]);
@@ -94,8 +110,11 @@ export default function SellerDashboardPage() {
   const [newCoupon, setNewCoupon] = useState({
     code: '',
     discountType: 'PERCENTAGE',
-    discountValue: 10,
-    minOrderAmount: 0,
+    discountValue: '',
+    minOrderAmount: '',
+    maxDiscountAmount: '',
+    usageLimit: '',
+    expiryDate: '',
   });
 
   const [storeProfile, setStoreProfile] = useState({
@@ -314,7 +333,7 @@ export default function SellerDashboardPage() {
       await loadData();
     } catch (err) {
       setCreateStoreError(
-        err?.message || 'Failed to create store. Confirm you are logged in as ROLE_SELLER.'
+        err?.message || 'Failed to create store. Make sure your seller application is approved.'
       );
     } finally {
       setCreatingStore(false);
@@ -324,20 +343,6 @@ export default function SellerDashboardPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  const orderStats = useMemo(() => {
-    const list = Array.isArray(orders) ? orders : [];
-    const total = list.length || 1;
-    const delivered = list.filter((o) => o.status === 'DELIVERED').length;
-    const shipped = list.filter((o) => ['SHIPPED', 'DELIVERED'].includes(o.status)).length;
-    const cancelled = list.filter((o) => o.status === 'CANCELLED').length;
-    return {
-      processingRate: ((list.filter((o) => o.status !== 'PENDING').length / total) * 100).toFixed(1),
-      shipRate: ((shipped / total) * 100).toFixed(1),
-      cancelRate: ((cancelled / total) * 100).toFixed(1),
-      deliveredCount: delivered,
-    };
-  }, [orders]);
 
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
@@ -535,12 +540,12 @@ export default function SellerDashboardPage() {
     setAiGeneratedKeywords([]);
     setAiPriceRecommendation(null);
     try {
-      const res = await axiosClient.post('/ai/assistant/chat', {
+      const res = await axiosClient.post('/ai-assistant/chat', {
         message: `You are a product copywriter for an e-commerce seller. Based on these keywords/details: "${aiProductKeywords}". Reply with:
         1) One optimized product title (max 80 chars)
         2) A short product description (2-3 sentences)
         3) Five SEO keywords comma-separated
-        4) A suggested retail price in USD as a number only on the last line like PRICE: 99.99`,
+        4) A suggested retail price in Bangladeshi Taka (BDT) as a number only on the last line like PRICE: 99.99`,
       });
 
       const text =
@@ -605,19 +610,34 @@ export default function SellerDashboardPage() {
     if (!newCoupon.code?.trim()) return;
 
     try {
+      // The expiry input is a plain date, but the API takes a LocalDateTime. Sending the bare
+      // "YYYY-MM-DD" made Jackson reject the whole body with 400, so widen it to the end of the
+      // chosen day: a seller picking 27 Oct means "usable through the end of 27 Oct".
+      const expiryDate = newCoupon.expiryDate ? `${newCoupon.expiryDate}T23:59:59` : null;
+
+      // Leaving the box blank previously sent an explicit null, which the API then replaced with
+      // its own fallback of 1000. Omitting the field honours the documented default of 500 instead.
+      const usageLimit = newCoupon.usageLimit ? Number(newCoupon.usageLimit) : undefined;
+
       await axiosClient.post('/seller/coupons', {
         code: newCoupon.code.trim().toUpperCase(),
         discountType: newCoupon.discountType,
-        discountValue: Number(newCoupon.discountValue),
-        minOrderAmount: Number(newCoupon.minOrderAmount) || 0,
+        discountValue: newCoupon.discountValue ? Number(newCoupon.discountValue) : null,
+        minOrderAmount: newCoupon.minOrderAmount ? Number(newCoupon.minOrderAmount) : null,
+        maxDiscountAmount: newCoupon.maxDiscountAmount ? Number(newCoupon.maxDiscountAmount) : null,
+        ...(usageLimit !== undefined ? { usageLimit } : {}),
+        expiryDate,
       });
 
       alert('Coupon created successfully!');
       setNewCoupon({
         code: '',
         discountType: 'PERCENTAGE',
-        discountValue: 10,
-        minOrderAmount: 0,
+        discountValue: '',
+        minOrderAmount: '',
+        maxDiscountAmount: '',
+        usageLimit: '',
+        expiryDate: '',
       });
       await loadData();
     } catch (err) {
@@ -661,7 +681,7 @@ export default function SellerDashboardPage() {
     e.preventDefault();
     const amount = parseFloat(payoutAmount);
     if (!amount || amount < 1) {
-      alert('Enter a valid amount (min $1)');
+      alert('Enter a valid amount (min ৳1)');
       return;
     }
     try {
@@ -819,43 +839,8 @@ export default function SellerDashboardPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
-      <aside className="w-full lg:w-60 shrink-0 bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4">
-        <div className="border-b border-slate-800 pb-3 mb-2">
-          <h2 className="text-xs font-black uppercase text-indigo-400 tracking-widest">
-            Management Modules
-          </h2>
-        </div>
-
-        <nav className="flex flex-row lg:flex-col flex-wrap gap-1">
-          {[
-            { id: 'overview', icon: BarChart3, label: 'Store Overview' },
-            { id: 'products', icon: Package, label: 'Product Catalog' },
-            { id: 'inventory', icon: Layers, label: 'Inventory & Warehouses' },
-            { id: 'orders', icon: ShoppingCart, label: 'Order Manager' },
-            { id: 'customers', icon: Users, label: 'Customer Relations' },
-            { id: 'marketing', icon: Percent, label: 'Marketing & Coupons' },
-            { id: 'finance', icon: DollarSign, label: 'Finance & Wallets' },
-            { id: 'ai-hub', icon: Sparkles, label: 'AI Marketing Hub', amber: true },
-            { id: 'settings', icon: Settings, label: 'Store Settings' },
-          ].map(({ id, icon: Icon, label, amber }) => (
-            <button
-              key={id}
-              onClick={() => setActiveSubTab(id)}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2.5 transition ${
-                activeSubTab === id
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${amber ? 'text-amber-400' : ''}`} /> {label}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="flex-1 space-y-6">
-        {error && (
+    <div className="space-y-6">
+      {error && (
           <div className="p-4 rounded-2xl bg-rose-950/50 border border-rose-800 text-rose-200 text-xs flex items-center justify-between gap-3">
             <span>{error}</span>
             <button
@@ -894,92 +879,16 @@ export default function SellerDashboardPage() {
         </div>
 
         {activeSubTab === 'overview' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">Total Sales Revenue</span>
-                <p className="text-2xl font-black text-white">${money(analytics?.totalSalesRevenue)}</p>
-                <span className="text-[10px] text-indigo-400 font-bold">From seller dashboard API</span>
-              </div>
-              <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">Total Products</span>
-                <p className="text-2xl font-black text-white">{analytics?.totalProducts ?? products.length}</p>
-                <span className="text-[10px] text-slate-400">Active catalog items</span>
-              </div>
-              <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">Total Orders</span>
-                <p className="text-2xl font-black text-white">{analytics?.completedOrdersCount ?? orders.length}</p>
-                <span className="text-[10px] text-slate-400">All statuses</span>
-              </div>
-              <div className="glass-card p-5 rounded-2xl space-y-2 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block font-semibold">Avg Rating / Low Stock</span>
-                <p className="text-2xl font-black text-white">
-                  ★ {(analytics?.averageRating ?? 0).toFixed(1)} / {analytics?.lowStockAlertCount ?? 0}
-                </p>
-                <span className="text-[10px] text-amber-400 font-bold">Low-stock alerts</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-xs font-black uppercase text-indigo-400 tracking-wider">Order status mix (live)</h3>
-                <div className="space-y-3 pt-2 text-xs">
-                  {['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'].map((st) => {
-                    const count = orders.filter((o) => o.status === st).length;
-                    const pct = orders.length > 0 ? Math.round((count / orders.length) * 100) : 0;
-                    return (
-                      <div key={st} className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-slate-300 font-semibold">{st}</span>
-                          <span className="text-white font-black">{count} ({pct}%)</span>
-                        </div>
-                        <div className="h-2 bg-slate-950 rounded-full">
-                          <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {orders.length === 0 && <p className="text-slate-500 text-xs">No orders yet for this store.</p>}
-                </div>
-              </div>
-
-              <div className="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
-                <h3 className="text-xs font-black uppercase text-indigo-400 tracking-wider">Store performance (from orders)</h3>
-                <div className="space-y-4 pt-3 text-xs">
-                  <div className="space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-slate-300 font-semibold">Moved past pending</span>
-                      <span className="text-white font-black">{orderStats.processingRate}%</span>
-                    </div>
-                    <div className="h-2 bg-slate-950 rounded-full">
-                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${orderStats.processingRate}%` }} />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-slate-300 font-semibold">Shipped or delivered</span>
-                      <span className="text-white font-black">{orderStats.shipRate}%</span>
-                    </div>
-                    <div className="h-2 bg-slate-950 rounded-full">
-                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${orderStats.shipRate}%` }} />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-slate-300 font-semibold">Cancelled ratio</span>
-                      <span className="text-white font-black">{orderStats.cancelRate}%</span>
-                    </div>
-                    <div className="h-2 bg-slate-950 rounded-full">
-                      <div
-                        className="h-full bg-rose-500 rounded-full"
-                        style={{ width: `${Math.min(100, Number(orderStats.cancelRate))}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SellerOverviewTab
+            store={store}
+            analytics={analytics}
+            orders={orders}
+            products={products}
+            inventoryList={inventoryList}
+            reviews={reviews}
+            wallet={wallet}
+            coupons={coupons}
+          />
         )}
 
         {activeSubTab === 'products' && (
@@ -1070,10 +979,10 @@ export default function SellerDashboardPage() {
                         <td className="p-4 font-mono font-semibold">{prod.sku || '—'}</td>
                         <td className="p-4 text-slate-400 font-semibold">{prod.categoryName || 'General'}</td>
                         <td className="p-4">
-                          <span className="font-extrabold text-white">${money(prod.price)}</span>
+                          <span className="font-extrabold text-white">৳{money(prod.price)}</span>
                           {prod.compareAtPrice != null && (
                             <span className="text-[10px] text-slate-500 line-through block">
-                              ${money(prod.compareAtPrice)}
+                              ৳{money(prod.compareAtPrice)}
                             </span>
                           )}
                         </td>
@@ -1239,6 +1148,11 @@ export default function SellerDashboardPage() {
                           <span className="text-[10px] text-slate-500 font-mono block">
                             {ord.createdAt ? new Date(ord.createdAt).toLocaleDateString() : '—'}
                           </span>
+                          {ord.orderType === 'GROUP_BUY' && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-indigo-950 border border-indigo-800 text-indigo-300 text-[9px] font-bold uppercase">
+                              Group buy
+                            </span>
+                          )}
                         </td>
                         <td className="p-4">
                           <span className="font-semibold text-white block">{ord.userName || '—'}</span>
@@ -1251,7 +1165,7 @@ export default function SellerDashboardPage() {
                           </span>
                         </td>
                         <td className="p-4">
-                          <span className="font-extrabold text-white block">${money(ord.totalAmount)}</span>
+                          <span className="font-extrabold text-white block">৳{money(ord.totalAmount)}</span>
                         </td>
                         <td className="p-4">
                           <span
@@ -1361,7 +1275,7 @@ export default function SellerDashboardPage() {
                         <p className="text-[10px] text-indigo-300 font-mono">{c.email || id}</p>
                       </div>
                       <div className="text-right">
-                        <span className="font-black text-emerald-400 block">${money(c.spent)} spent</span>
+                        <span className="font-black text-emerald-400 block">৳{money(c.spent)} spent</span>
                         <span className="text-[10px] text-slate-400">{c.count} orders</span>
                       </div>
                     </div>
@@ -1474,7 +1388,7 @@ export default function SellerDashboardPage() {
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                       >
                         <option value="PERCENTAGE">Percentage (%)</option>
-                        <option value="FIXED_AMOUNT">Fixed ($)</option>
+                        <option value="FIXED_AMOUNT">Fixed (৳)</option>
                       </select>
                     </div>
                     <div className="space-y-1">
@@ -1491,7 +1405,7 @@ export default function SellerDashboardPage() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-300">Min order ($)</label>
+                    <label className="font-semibold text-slate-300">Min order (৳)</label>
                     <input
                       type="number"
                       value={newCoupon.minOrderAmount}
@@ -1500,6 +1414,41 @@ export default function SellerDashboardPage() {
                       }
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
                     />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-300">Max discount (৳) (optional)</label>
+                    <input
+                      type="number"
+                      value={newCoupon.maxDiscountAmount}
+                      onChange={(e) =>
+                        setNewCoupon({ ...newCoupon, maxDiscountAmount: e.target.value })
+                      }
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="font-semibold text-slate-300">Usage limit</label>
+                      <input
+                        type="number"
+                        value={newCoupon.usageLimit}
+                        onChange={(e) =>
+                          setNewCoupon({ ...newCoupon, usageLimit: e.target.value })
+                        }
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-semibold text-slate-300">Expiry date</label>
+                      <input
+                        type="date"
+                        value={newCoupon.expiryDate}
+                        onChange={(e) =>
+                          setNewCoupon({ ...newCoupon, expiryDate: e.target.value })
+                        }
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100"
+                      />
+                    </div>
                   </div>
                   <button
                     type="submit"
@@ -1531,33 +1480,31 @@ export default function SellerDashboardPage() {
                       key={c.id}
                       className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between text-xs gap-2"
                     >
-                      <div>
-                        <span className="font-extrabold text-white bg-slate-800 border border-slate-700 px-2 py-0.5 rounded font-mono">
+                      <div className="space-y-1 min-w-0">
+                        <span className="font-extrabold text-white bg-slate-800 border border-slate-700 px-2 py-0.5 rounded font-mono block truncate">
                           {c.code}
                         </span>
-                        <span className="text-[10px] text-slate-400 block mt-1">
-                          Min: ${c.minOrderAmount ?? 0}
-                          {c.timesUsed != null ? ` · Used ${c.timesUsed}` : ''}
-                        </span>
-                      </div>
-                      <div className="text-right flex flex-col items-end gap-1">
-                        <span className="font-black text-indigo-400 text-sm block">
+                        <span className="text-[10px] text-slate-400 block">
                           {c.discountType === 'PERCENTAGE'
-                            ? `${c.discountValue}% OFF`
-                            : `$${c.discountValue} OFF`}
+                            ? `${c.discountValue}%`
+                            : `৳${Number(c.discountValue).toFixed(2)}`} off
+                          {c.minOrderAmount != null && c.minOrderAmount > 0 ? ` · Min ৳${Number(c.minOrderAmount).toFixed(2)}` : ''}
+                          {c.maxDiscountAmount != null ? ` · Cap ৳${Number(c.maxDiscountAmount).toFixed(2)}` : ''}
+                          {c.usageLimit != null ? ` · Used ${c.timesUsed ?? 0}/${c.usageLimit}` : ''}
+                          {c.expiryDate ? ` · Exp ${new Date(c.expiryDate).toLocaleDateString()}` : ''}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleCoupon(c.id, c.active)}
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                            c.active
-                              ? 'bg-emerald-950 border-emerald-800 text-emerald-300'
-                              : 'bg-slate-800 border-slate-700 text-slate-400'
-                          }`}
-                        >
-                          {c.active ? 'Active' : 'Inactive'}
-                        </button>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleCoupon(c.id, c.active)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded border shrink-0 ${
+                          c.active
+                            ? 'bg-emerald-950 border-emerald-800 text-emerald-300'
+                            : 'bg-slate-800 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        {c.active ? 'Active' : 'Inactive'}
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1572,20 +1519,20 @@ export default function SellerDashboardPage() {
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
                 <span className="text-xs text-slate-400">Gross sales</span>
                 <p className="text-2xl font-black text-emerald-400">
-                  ${money(wallet?.grossSales ?? analytics?.totalSalesRevenue)}
+                  ৳{money(wallet?.grossSales ?? analytics?.totalSalesRevenue)}
                 </p>
               </div>
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
                 <span className="text-xs text-slate-400">Available balance</span>
-                <p className="text-2xl font-black text-white">${money(wallet?.availableBalance)}</p>
+                <p className="text-2xl font-black text-white">৳{money(wallet?.availableBalance)}</p>
               </div>
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
                 <span className="text-xs text-slate-400">Pending payout</span>
-                <p className="text-2xl font-black text-amber-300">${money(wallet?.pendingBalance)}</p>
+                <p className="text-2xl font-black text-amber-300">৳{money(wallet?.pendingBalance)}</p>
               </div>
               <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-1">
                 <span className="text-xs text-slate-400">Total paid out</span>
-                <p className="text-2xl font-black text-indigo-300">${money(wallet?.totalPaidOut)}</p>
+                <p className="text-2xl font-black text-indigo-300">৳{money(wallet?.totalPaidOut)}</p>
               </div>
             </div>
 
@@ -1594,7 +1541,7 @@ export default function SellerDashboardPage() {
                 <h3 className="text-sm font-black uppercase text-indigo-400 tracking-wider">Request payout</h3>
                 <form onSubmit={handleRequestPayout} className="space-y-3 text-xs">
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-300">Amount ($)</label>
+                    <label className="font-semibold text-slate-300">Amount (৳)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1623,7 +1570,7 @@ export default function SellerDashboardPage() {
                       className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex justify-between text-xs font-mono"
                     >
                       <span className="text-white font-bold">
-                        ${money(t.amount)} · {t.type}
+                        ৳{money(t.amount)} · {t.type}
                       </span>
                       <span className="text-slate-400">{t.status}</span>
                     </div>
@@ -1694,15 +1641,15 @@ export default function SellerDashboardPage() {
                       <div className="p-3 bg-indigo-950/30 border border-indigo-900 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                         <div>
                           <span className="text-[10px] text-slate-500 block">Recommended</span>
-                          <span className="font-black text-emerald-400">${aiPriceRecommendation.recommendedPrice}</span>
+                          <span className="font-black text-emerald-400">৳{aiPriceRecommendation.recommendedPrice}</span>
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-500 block">Market avg</span>
-                          <span className="font-black text-slate-300">${aiPriceRecommendation.marketAverage}</span>
+                          <span className="font-black text-slate-300">৳{aiPriceRecommendation.marketAverage}</span>
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-500 block">High</span>
-                          <span className="font-black text-slate-300">${aiPriceRecommendation.competitorHigh}</span>
+                          <span className="font-black text-slate-300">৳{aiPriceRecommendation.competitorHigh}</span>
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-500 block">Margin</span>
@@ -1820,7 +1767,13 @@ export default function SellerDashboardPage() {
             </div>
           </div>
         )}
-      </div>
+
+        {activeSubTab === 'group-buys' && <SellerGroupBuysTab />}
+        {activeSubTab === 'wholesale' && <SellerWholesaleTab />}
+        {activeSubTab === 'reverse-group-buying' && <SellerReverseTab />}
+        {activeSubTab === 'group-reverse' && <SellerGroupReverseTab />}
+        {activeSubTab === 'group-buying-auctions' && <SellerAuctionTab />}
+        {activeSubTab === 'auctions' && <SellerProxyAuctionTab />}
 
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
@@ -1865,7 +1818,7 @@ export default function SellerDashboardPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">Price ($)</label>
+                  <label className="font-semibold text-slate-300">Price (৳)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -1876,7 +1829,7 @@ export default function SellerDashboardPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-300">Compare at ($)</label>
+                  <label className="font-semibold text-slate-300">Compare at (৳)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -2112,10 +2065,10 @@ export default function SellerDashboardPage() {
                 </div>
                 <div>
                   <span className="font-bold text-slate-500 uppercase block mb-1">Totals</span>
-                  <p>Subtotal: ${money(selectedOrder.subtotalAmount)}</p>
-                  <p>Tax: ${money(selectedOrder.taxAmount)}</p>
-                  <p>Shipping: ${money(selectedOrder.shippingAmount)}</p>
-                  <p className="font-black text-sm">Total: ${money(selectedOrder.totalAmount)}</p>
+                  <p>Subtotal: ৳{money(selectedOrder.subtotalAmount)}</p>
+                  <p>Tax: ৳{money(selectedOrder.taxAmount)}</p>
+                  <p>Shipping: ৳{money(selectedOrder.shippingAmount)}</p>
+                  <p className="font-black text-sm">Total: ৳{money(selectedOrder.totalAmount)}</p>
                 </div>
               </div>
             </div>

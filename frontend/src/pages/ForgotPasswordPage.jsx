@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="customer@groupmart.com"
+                placeholder="you@example.com"
                 className="w-full bg-slate-950 border border-slate-800 focus:border-nexus-500 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500"
               />
               <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />

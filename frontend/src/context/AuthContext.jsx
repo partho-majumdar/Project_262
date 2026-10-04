@@ -1,34 +1,68 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axiosClient from '../api/axiosClient';
+import { Roles, SellerStatus } from '../constants/roles';
 
 const AuthContext = createContext(null);
 
+const TOKEN_KEY = 'nexus_token';
+const USER_KEY = 'nexus_user';
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem('nexus_user');
-    return savedUser ? JSON.parse(savedUser) : null;
+    const savedUser = localStorage.getItem(USER_KEY);
+    if (!savedUser) return null;
+    try {
+      return JSON.parse(savedUser);
+    } catch {
+      return null;
+    }
   });
-  const [token, setToken] = useState(() => localStorage.getItem('nexus_token'));
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
   const [loading, setLoading] = useState(true);
+
+  const persist = useCallback((tokenVal, userData) => {
+    if (tokenVal && userData) {
+      localStorage.setItem(TOKEN_KEY, tokenVal);
+      localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+    }
+  }, []);
+
+  const logout = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    persist(null, null);
+  }, [persist]);
 
   useEffect(() => {
     const verifyUserSession = async () => {
-      if (token) {
-        try {
-          const response = await axiosClient.get('/auth/me');
-          const userData = response.data || response;
-          setUser(userData);
-          localStorage.setItem('nexus_user', JSON.stringify(userData));
-        } catch (error) {
-          console.error('Session verification failed:', error);
-          logout();
-        }
+      if (!token) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      try {
+        const response = await axiosClient.get('/auth/me');
+        const userData = response.data || response;
+        setUser(userData);
+        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+      } catch (error) {
+        console.error('Session verification failed:', error);
+        logout();
+      } finally {
+        setLoading(false);
+      }
     };
 
     verifyUserSession();
-  }, [token]);
+  }, [token, logout]);
+
+  useEffect(() => {
+    const handleForcedLogout = () => logout();
+    window.addEventListener('auth:logout', handleForcedLogout);
+    return () => window.removeEventListener('auth:logout', handleForcedLogout);
+  }, [logout]);
 
   const login = async (credentials) => {
     const response = await axiosClient.post('/auth/login', credentials);
@@ -42,8 +76,7 @@ export const AuthProvider = ({ children }) => {
 
     setToken(tokenVal);
     setUser(userData);
-    localStorage.setItem('nexus_token', tokenVal);
-    localStorage.setItem('nexus_user', JSON.stringify(userData));
+    persist(tokenVal, userData);
     return userData;
   };
 
@@ -59,22 +92,64 @@ export const AuthProvider = ({ children }) => {
 
     setToken(tokenVal);
     setUser(userData);
-    localStorage.setItem('nexus_token', tokenVal);
-    localStorage.setItem('nexus_user', JSON.stringify(userData));
+    persist(tokenVal, userData);
     return userData;
   };
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('nexus_token');
-    localStorage.removeItem('nexus_user');
+  const registerSeller = async (sellerData) => {
+    const response = await axiosClient.post('/auth/register/seller', sellerData);
+    const authData = response.data || response;
+    const tokenVal = authData.accessToken || authData.token;
+    const userData = authData.user;
+
+    if (!tokenVal || !userData) {
+      throw new Error('Seller registration response payload invalid');
+    }
+
+    setToken(tokenVal);
+    setUser(userData);
+    persist(tokenVal, userData);
+    return userData;
+  };
+
+  const refreshUser = useCallback(async () => {
+    if (!token) return null;
+    try {
+      const response = await axiosClient.get('/auth/me');
+      const userData = response.data || response;
+      setUser(userData);
+      localStorage.setItem(USER_KEY, JSON.stringify(userData));
+      return userData;
+    } catch (err) {
+      console.error('Failed to refresh user:', err);
+      return null;
+    }
+  }, [token]);
+
+  const submitSellerApplication = async (applicationData) => {
+    const response = await axiosClient.post('/auth/seller/apply', applicationData);
+    const payload = response.data || response;
+    await refreshUser();
+    return payload;
+  };
+
+  const fetchSellerApplication = async () => {
+    const response = await axiosClient.get('/auth/seller/application');
+    return response.data || response;
   };
 
   const isAuthenticated = !!token && !!user;
-  const isCustomer = user?.role === 'ROLE_CUSTOMER';
-  const isSeller = user?.role === 'ROLE_SELLER';
-  const isAdmin = user?.role === 'ROLE_ADMIN';
+  const role = user?.role;
+  const sellerStatus = user?.sellerStatus || SellerStatus.NONE;
+  const isCustomer = role === Roles.CUSTOMER;
+  const isSeller = role === Roles.SELLER;
+  const isAdmin = role === Roles.ADMIN;
+  const isSellerApproved =
+    isAdmin ||
+    isSeller ||
+    sellerStatus === SellerStatus.APPROVED;
+  const isSellerPending = sellerStatus === SellerStatus.PENDING;
+  const isSellerRejected = sellerStatus === SellerStatus.REJECTED;
 
   return (
     <AuthContext.Provider
@@ -82,13 +157,22 @@ export const AuthProvider = ({ children }) => {
         user,
         token,
         loading,
+        role,
+        sellerStatus,
         isAuthenticated,
         isCustomer,
         isSeller,
         isAdmin,
+        isSellerApproved,
+        isSellerPending,
+        isSellerRejected,
         login,
         register,
+        registerSeller,
         logout,
+        refreshUser,
+        submitSellerApplication,
+        fetchSellerApplication,
       }}
     >
       {children}

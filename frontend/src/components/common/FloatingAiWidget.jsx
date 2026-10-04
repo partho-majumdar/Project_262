@@ -28,7 +28,7 @@ export default function FloatingAiWidget() {
       text: 'Hello! I am GMart AI, your personal shopping assistant. How can I help you today?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestedPrompts: [
-        'Suggest gaming laptops under $2000',
+        'Suggest gaming laptops under ৳2000',
         'What is your shipping policy?',
         'How do I track my order?',
         'Show top photography phones'
@@ -65,7 +65,7 @@ export default function FloatingAiWidget() {
     setLoading(true);
 
     try {
-      const response = await axiosClient.post('/ai/assistant/chat', { message: query });
+      const response = await axiosClient.post('/ai-assistant/chat', { message: query });
       const data = response.data;
 
       const aiMsg = {
@@ -100,7 +100,7 @@ export default function FloatingAiWidget() {
         text: 'Conversation cleared! How can I assist you now?',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         suggestedPrompts: [
-          'Suggest gaming laptops under $2000',
+          'Suggest gaming laptops under ৳2000',
           'What is your return policy?',
           'Track my order'
         ]
@@ -199,7 +199,7 @@ export default function FloatingAiWidget() {
                             <div className="flex-1 min-w-0">
                               <p className="font-bold text-white text-[11px] truncate group-hover:text-nexus-400">{prod.name}</p>
                               <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                                <span className="font-extrabold text-emerald-400">${prod.price}</span>
+                                <span className="font-extrabold text-emerald-400">৳{prod.price}</span>
                                 {prod.rating > 0 && (
                                   <span className="flex items-center gap-0.5 text-amber-400">
                                     <Star className="w-2.5 h-2.5 fill-amber-400" /> {prod.rating}

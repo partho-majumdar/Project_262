@@ -6,7 +6,7 @@ import {
   ShieldCheck,
   Copy,
   Award,
-  DollarSign,
+  Banknote,
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 
@@ -42,9 +42,10 @@ export default function RewardsPage() {
     e.preventDefault();
     if (!promoInput.trim()) return;
     try {
+      const subtotal = couponsData?.cartSubtotal || couponsData?.totalSpent || 0;
       await axiosClient.post('/coupons/validate', {
         code: promoInput.trim(),
-        subtotal: 0,
+        subtotal,
       });
       alert(`Promo code '${promoInput.toUpperCase()}' is valid`);
       setPromoInput('');
@@ -53,7 +54,6 @@ export default function RewardsPage() {
     }
   };
 
-  // API only — no demo defaults
   const rewardPoints =
     couponsData?.rewardPoints != null ? Number(couponsData.rewardPoints) : null;
   const membershipTier =
@@ -62,6 +62,14 @@ export default function RewardsPage() {
       : null;
   const cashbackEarned =
     couponsData?.cashbackEarned != null ? Number(couponsData.cashbackEarned) : null;
+  const totalSpent =
+    couponsData?.totalSpent != null ? Number(couponsData.totalSpent) : null;
+  const totalOrders =
+    couponsData?.totalOrders != null ? Number(couponsData.totalOrders) : null;
+  const pointsRedemptionRate =
+    couponsData?.pointsRedemptionRate != null ? Number(couponsData.pointsRedemptionRate) : null;
+  const cashbackRate =
+    couponsData?.cashbackRate != null ? Number(couponsData.cashbackRate) : null;
 
   const availableCoupons = Array.isArray(couponsData?.availableCoupons)
     ? couponsData.availableCoupons
@@ -98,9 +106,9 @@ export default function RewardsPage() {
               <span className="text-slate-500 text-lg">—</span>
             )}
           </p>
-          {rewardPoints != null && (
+          {rewardPoints != null && pointsRedemptionRate != null && pointsRedemptionRate > 0 && (
             <span className="text-[11px] text-slate-400 block font-mono">
-              Est. value: ${(rewardPoints / 100).toFixed(2)}
+              Est. value: ৳{(rewardPoints / pointsRedemptionRate).toFixed(2)}
             </span>
           )}
         </div>
@@ -113,22 +121,35 @@ export default function RewardsPage() {
           <p className="text-2xl font-extrabold text-emerald-400">
             {membershipTier ?? <span className="text-slate-500 text-lg">—</span>}
           </p>
-          <span className="text-[11px] text-slate-400 block">From order history</span>
+          <span className="text-[11px] text-slate-400 block">
+            {totalSpent != null
+              ? `Lifetime spend: ৳${totalSpent.toFixed(2)}`
+              : 'From order history'}
+          </span>
+          {totalOrders != null && (
+            <span className="text-[10px] text-slate-500 block font-mono">
+              {totalOrders} completed order{totalOrders === 1 ? '' : 's'}
+            </span>
+          )}
         </div>
 
         <div className="glass-card p-6 rounded-3xl border border-slate-800 space-y-2">
           <div className="flex justify-between items-center text-slate-400 text-xs font-bold">
             <span>LIFETIME CASHBACK</span>
-            <DollarSign className="w-5 h-5 text-indigo-400" />
+            <Banknote className="w-5 h-5 text-indigo-400" />
           </div>
           <p className="text-3xl font-extrabold text-white font-mono">
             {cashbackEarned != null ? (
-              `$${cashbackEarned.toFixed(2)}`
+              `৳${cashbackEarned.toFixed(2)}`
             ) : (
               <span className="text-slate-500 text-lg">—</span>
             )}
           </p>
-          <span className="text-[11px] text-slate-400 block">From completed orders</span>
+          <span className="text-[11px] text-slate-400 block">
+            {cashbackRate != null
+              ? `${(Number(cashbackRate) * 100).toFixed(0)}% of completed orders`
+              : 'From completed orders'}
+          </span>
         </div>
       </div>
 
@@ -191,12 +212,12 @@ export default function RewardsPage() {
                       (coupon.discountType === 'PERCENTAGE'
                         ? `${coupon.discountValue}% off`
                         : coupon.discountValue != null
-                          ? `$${coupon.discountValue} off`
+                          ? `৳${coupon.discountValue} off`
                           : 'Promo')}
                   </h4>
                   {(coupon.minOrderAmount != null || coupon.minSpend != null) && (
                     <p className="text-[11px] text-slate-400">
-                      Min spend: $
+                      Min spend: ৳
                       {Number(coupon.minOrderAmount ?? coupon.minSpend ?? 0).toFixed(2)}
                     </p>
                   )}

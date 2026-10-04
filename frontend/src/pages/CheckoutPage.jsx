@@ -9,6 +9,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Lock,
+  AlertTriangle,
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 import AddressSelectorModal from '../components/common/AddressSelectorModal';
@@ -34,6 +35,12 @@ export default function CheckoutPage() {
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
 
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState('');
+
   useEffect(() => {
     const initAddressAndShipping = async () => {
       try {
@@ -42,14 +49,17 @@ export default function CheckoutPage() {
           const defaultAddr = addrRes.data.find((a) => a.isDefault) || addrRes.data[0];
           setSelectedAddress(defaultAddr);
         }
-        const shipRes = await axiosClient.get('/shipping/methods');
+        const subtotal = cart ? Number(cart.subtotalAmount ?? 0) : 0;
+        const shipRes = await axiosClient.get('/shipping/methods', {
+          params: { subtotal }
+        });
         setShippingMethods(shipRes.data || []);
       } catch (err) {
         console.error('Checkout initialization failed', err);
       }
     };
     initAddressAndShipping();
-  }, []);
+  }, [cart]);
 
   const handleCreatePaymentIntent = async () => {
     if (!cart) return;
@@ -62,7 +72,7 @@ export default function CheckoutPage() {
     }
     try {
       const response = await axiosClient.post('/payments/create-intent', {
-        amount: cart.totalAmount,
+        amount: getCurrentTotal(),
         paymentMethod,
       });
       setPaymentIntent(response.data);
@@ -85,9 +95,10 @@ export default function CheckoutPage() {
         addressId: selectedAddress.id,
         paymentMethod,
         shippingOptionId: selectedShippingMethod,
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
       });
 
-      if (paymentIntent?.transactionId) {
+      if (paymentIntent?.transactionId && paymentMethod !== 'CASH_ON_DELIVERY') {
         await axiosClient.post('/payments/webhook', {
           transactionId: paymentIntent.transactionId,
           status: 'COMPLETED',
@@ -102,6 +113,82 @@ export default function CheckoutPage() {
       alert(err.message || 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getCurrentSubtotal = () => Number(cart?.subtotalAmount ?? 0);
+
+  const getCurrentDiscount = () => (appliedCoupon ? couponDiscount : 0);
+
+  const getCurrentTax = () => {
+    const subtotal = getCurrentSubtotal();
+    const discount = getCurrentDiscount();
+    const discountedSubtotal = Math.max(0, subtotal - discount);
+    const taxRate = Number(cart?.taxRate ?? 0.08);
+    return discountedSubtotal * taxRate;
+  };
+
+  const getCurrentShipping = () => {
+    const selectedMethod = shippingMethods.find((m) => m.id === selectedShippingMethod);
+    if (selectedMethod) {
+      return Number(selectedMethod.rate);
+    }
+    const subtotal = getCurrentSubtotal();
+    const discount = getCurrentDiscount();
+    const discountedSubtotal = Math.max(0, subtotal - discount);
+    if (discountedSubtotal >= 100) return 0;
+    return Number(cart?.shippingAmount ?? 15);
+  };
+
+  const getCurrentTotal = () => {
+    const subtotal = getCurrentSubtotal();
+    const discount = getCurrentDiscount();
+    const discountedSubtotal = Math.max(0, subtotal - discount);
+    return discountedSubtotal + getCurrentTax() + getCurrentShipping();
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim() || !cart) return;
+    setCouponLoading(true);
+    setCouponError('');
+    try {
+      const subtotal = getCurrentSubtotal();
+      const apiResponse = await axiosClient.post('/coupons/validate', {
+        code: couponCode.trim(),
+        subtotal,
+      });
+      const result = apiResponse.data;
+      if (result && result.valid) {
+        setAppliedCoupon(result);
+        setCouponDiscount(Number(result.calculatedDiscount || 0));
+        const discountedSubtotal = Math.max(0, subtotal - Number(result.calculatedDiscount || 0));
+        const shipRes = await axiosClient.get('/shipping/methods', {
+          params: { subtotal: discountedSubtotal }
+        });
+        setShippingMethods(shipRes.data || []);
+        setCouponCode('');
+      } else {
+        setCouponError('Invalid or expired coupon code');
+      }
+    } catch (err) {
+      setCouponError(err.message || 'Failed to apply coupon');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = async () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponError('');
+    const subtotal = getCurrentSubtotal();
+    try {
+      const shipRes = await axiosClient.get('/shipping/methods', {
+        params: { subtotal }
+      });
+      setShippingMethods(shipRes.data || []);
+    } catch (err) {
+      console.error('Failed to refresh shipping methods', err);
     }
   };
 
@@ -123,10 +210,10 @@ export default function CheckoutPage() {
 
   const taxLabel =
     cart.taxRate != null ? ` (${(Number(cart.taxRate) * 100).toFixed(0)}%)` : '';
-  const taxDisplay = Number(cart.taxAmount ?? cart.estimatedTax ?? 0).toFixed(2);
-  const shippingDisplay = Number(cart.shippingAmount ?? 0).toFixed(2);
   const subtotalDisplay = Number(cart.subtotalAmount ?? 0).toFixed(2);
-  const totalDisplay = Number(cart.totalAmount ?? 0).toFixed(2);
+  const taxDisplay = getCurrentTax().toFixed(2);
+  const shippingDisplay = getCurrentShipping().toFixed(2);
+  const totalDisplay = getCurrentTotal().toFixed(2);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -250,7 +337,7 @@ export default function CheckoutPage() {
                       </p>
                     </div>
                     <span className="text-base font-extrabold text-white">
-                      {Number(method.rate) === 0 ? 'FREE' : `$${Number(method.rate).toFixed(2)}`}
+                      {Number(method.rate) === 0 ? 'FREE' : `৳${Number(method.rate).toFixed(2)}`}
                     </span>
                   </div>
                 ))}
@@ -375,6 +462,14 @@ export default function CheckoutPage() {
                     {selectedShippingMethod.replace(/_/g, ' ')}
                   </span>
                 </div>
+                {appliedCoupon && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Promo Code Applied:</span>
+                    <span className="font-semibold text-emerald-400">
+                      {appliedCoupon.code} (-৳{couponDiscount.toFixed(2)})
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-400">Payment Gateway Authorization:</span>
                   <span className="font-semibold text-emerald-400 uppercase">
@@ -414,6 +509,47 @@ export default function CheckoutPage() {
               Order Items ({cart.totalItems})
             </h3>
 
+            <div className="space-y-2">
+              {appliedCoupon ? (
+                <div className="p-3 bg-emerald-950/40 border border-emerald-800 rounded-xl flex items-center justify-between gap-2">
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="text-xs font-bold text-emerald-300 block truncate">{appliedCoupon.code}</span>
+                    <p className="text-[11px] text-emerald-400">
+                      {appliedCoupon.discountType === 'PERCENTAGE'
+                        ? `${appliedCoupon.discountValue}% off`
+                        : `৳${Number(appliedCoupon.discountValue).toFixed(2)} off`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleRemoveCoupon}
+                    className="text-xs text-slate-400 hover:text-white font-semibold shrink-0"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value)}
+                    placeholder="Enter coupon code"
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 uppercase font-mono"
+                  />
+                  <button
+                    onClick={handleApplyCoupon}
+                    disabled={couponLoading || !couponCode.trim()}
+                    className="px-4 py-2 bg-nexus-600 hover:bg-nexus-500 text-white rounded-xl text-xs font-bold disabled:opacity-40"
+                  >
+                    {couponLoading ? '...' : 'Apply'}
+                  </button>
+                </div>
+              )}
+              {couponError && (
+                <p className="text-[11px] text-red-400">{couponError}</p>
+              )}
+            </div>
+
             <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
               {cart.items.map((item) => (
                 <div key={item.id} className="flex items-center gap-3 text-xs">
@@ -427,10 +563,10 @@ export default function CheckoutPage() {
                   <div className="flex-1 space-y-0.5">
                     <p className="font-semibold text-white line-clamp-1">{item.productName}</p>
                     <p className="text-slate-400">
-                      {item.quantity} x ${Number(item.unitPrice).toFixed(2)}
+                      {item.quantity} x ৳{Number(item.unitPrice).toFixed(2)}
                     </p>
                   </div>
-                  <span className="font-bold text-white">${Number(item.subtotal).toFixed(2)}</span>
+                  <span className="font-bold text-white">৳{Number(item.subtotal).toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -438,19 +574,25 @@ export default function CheckoutPage() {
             <div className="space-y-2 text-xs pt-3 border-t border-slate-800">
               <div className="flex justify-between text-slate-400">
                 <span>Subtotal</span>
-                <span className="font-semibold text-slate-200">${subtotalDisplay}</span>
+                <span className="font-semibold text-slate-200">৳{subtotalDisplay}</span>
               </div>
+              {appliedCoupon && (
+                <div className="flex justify-between text-emerald-400">
+                  <span>Discount ({appliedCoupon.code})</span>
+                  <span className="font-semibold">-৳{couponDiscount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-slate-400">
                 <span>Estimated Tax{taxLabel}</span>
-                <span className="font-semibold text-slate-200">${taxDisplay}</span>
+                <span className="font-semibold text-slate-200">৳{taxDisplay}</span>
               </div>
               <div className="flex justify-between text-slate-400">
                 <span>Shipping Fee</span>
-                <span className="font-semibold text-slate-200">${shippingDisplay}</span>
+                <span className="font-semibold text-slate-200">৳{shippingDisplay}</span>
               </div>
               <div className="pt-2 border-t border-slate-800 flex justify-between items-baseline text-sm">
                 <span className="font-bold text-white">Total Amount</span>
-                <span className="text-xl font-extrabold text-white">${totalDisplay}</span>
+                <span className="text-xl font-extrabold text-white">৳{totalDisplay}</span>
               </div>
             </div>
           </div>

@@ -14,8 +14,12 @@ import com.groupmart.dto.product.ProductDto;
 import com.groupmart.dto.search.SearchFilterRequest;
 import com.groupmart.dto.search.SearchResultDto;
 import com.groupmart.entity.Product;
+import com.groupmart.entity.SearchSource;
 import com.groupmart.repository.ProductRepository;
+import com.groupmart.service.SearchHistoryService;
 import com.groupmart.service.SearchService;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -26,6 +30,7 @@ import java.util.stream.Collectors;
 public class SearchServiceImpl implements SearchService {
 
     private final ProductRepository productRepository;
+    private final SearchHistoryService searchHistoryService;
 
     // Intelligent Synonym & Intent Dictionary (Amazon / Flipkart Style)
     private static final Map<String, List<String>> SYNONYM_MAP = new HashMap<>();
@@ -75,6 +80,10 @@ public class SearchServiceImpl implements SearchService {
         // Process search query terms and expand synonyms
         String rawQuery = request.getQuery() != null ? request.getQuery().trim().toLowerCase() : "";
         Set<String> searchTerms = expandSearchTerms(rawQuery);
+
+        if (!rawQuery.isEmpty()) {
+            searchHistoryService.record(resolveCurrentUserEmail(), request.getQuery().trim(), SearchSource.SITE_SEARCH);
+        }
 
         Specification<Product> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -168,6 +177,14 @@ public class SearchServiceImpl implements SearchService {
                 .limit(5)
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
+    }
+
+    private String resolveCurrentUserEmail() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        return auth.getName();
     }
 
     private Set<String> expandSearchTerms(String rawQuery) {

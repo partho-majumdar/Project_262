@@ -16,7 +16,7 @@ services:
         sync: false
       - key: SPRING_DATASOURCE_PASSWORD
         sync: false
-      - key: JWT_SECRET
+      - key: APP_JWT_SECRET
         generateValue: true
       - key: APP_CORS_ALLOWED_ORIGINS
         sync: false

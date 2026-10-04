@@ -13,5 +13,7 @@ public interface InventoryLogRepository extends JpaRepository<InventoryLog, UUID
 
     List<InventoryLog> findByProductIdOrderByCreatedAtDesc(UUID productId);
 
+    List<InventoryLog> findTop100ByReasonStartingWithOrderByCreatedAtDesc(String reasonPrefix);
+
     List<InventoryLog> findBySellerStoreIdOrderByCreatedAtDesc(UUID sellerStoreId);
 }

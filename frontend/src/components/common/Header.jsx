@@ -23,11 +23,16 @@ import {
   LayoutDashboard,
   Flame,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  Users,
+  Boxes,
+  Gavel
 } from 'lucide-react';
 import axiosClient from '../../api/axiosClient';
 import ImageSearchModal from './ImageSearchModal';
 import ProductComparisonModal from './ProductComparisonModal';
+import NotificationBell from './NotificationBell';
+import { Roles, ROUTES, dashboardRouteForRole, isSellerApproved, SellerStatus } from '../../constants/roles';
 
 export default function Header() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -118,18 +123,25 @@ export default function Header() {
   };
 
   // Role-Based Redirection Setup
-  let dashboardLink = '/customer/dashboard';
+  let dashboardLink = ROUTES.CUSTOMER_DASHBOARD;
   let dashboardText = 'Customer Dashboard';
   let dashboardTheme = 'bg-nexus-600 hover:bg-nexus-500 text-white';
 
-  if (user?.role === 'ROLE_ADMIN') {
-    dashboardLink = '/admin/dashboard';
+  if (user?.role === Roles.ADMIN) {
+    dashboardLink = ROUTES.ADMIN_DASHBOARD;
     dashboardText = 'Admin Dashboard';
     dashboardTheme = 'bg-rose-600 hover:bg-rose-500 text-white';
-  } else if (user?.role === 'ROLE_SELLER') {
-    dashboardLink = '/seller/dashboard';
+  } else if (isSellerApproved(user)) {
+    dashboardLink = ROUTES.SELLER_DASHBOARD;
     dashboardText = 'Seller Dashboard';
     dashboardTheme = 'bg-emerald-600 hover:bg-emerald-500 text-white';
+  } else {
+    dashboardLink = dashboardRouteForRole(user);
+    if (user?.sellerStatus === 'PENDING') {
+      dashboardText = 'Application Pending';
+    } else if (user?.sellerStatus === 'REJECTED') {
+      dashboardText = 'Resubmit Application';
+    }
   }
 
   return (
@@ -227,7 +239,7 @@ export default function Header() {
                               <span className="text-[10px] text-slate-400 font-mono">{item.categoryName || 'Catalog Item'}</span>
                             </div>
                           </div>
-                          <span className="text-emerald-400 font-bold font-mono">${item.price?.toFixed(2)}</span>
+                          <span className="text-emerald-400 font-bold font-mono">৳{item.price?.toFixed(2)}</span>
                         </div>
                       ))}
                     </div>
@@ -257,12 +269,21 @@ export default function Header() {
             <nav className="hidden lg:flex items-center gap-5 text-xs font-bold text-slate-300">
               <Link to="/" className="hover:text-nexus-400 transition">Home</Link>
               <Link to="/categories" className="hover:text-nexus-400 transition">Categories</Link>
-              <Link to="/products?tag=trending" className="hover:text-nexus-400 transition">Trending Products</Link>
+              {/* <Link to="/products?tag=trending" className="hover:text-nexus-400 transition">Trending Products</Link> */}
               <Link to="/products?tag=deals" className="hover:text-nexus-400 transition flex items-center gap-1">
                 <Flame className="w-3.5 h-3.5 text-amber-400" /> Deals
               </Link>
+              <Link to="/group-deals" className="hover:text-emerald-300 text-emerald-400 transition flex items-center gap-1">
+                <Users className="w-3.5 h-3.5" /> Group Deals
+              </Link>
+              <Link to="/wholesale" className="hover:text-indigo-300 text-indigo-400 transition flex items-center gap-1">
+                <Boxes className="w-3.5 h-3.5" /> Wholesale
+              </Link>
+              <Link to="/auctions" className="hover:text-amber-300 text-amber-400 transition flex items-center gap-1">
+                <Gavel className="w-3.5 h-3.5" /> Auctions
+              </Link>
               <Link to="/products" className="hover:text-nexus-400 transition">Brands</Link>
-              <Link to="/seller/register" className="text-emerald-400 hover:text-emerald-300 font-bold transition flex items-center gap-1">
+              <Link to={ROUTES.SELLER_APPLY} className="text-emerald-400 hover:text-emerald-300 font-bold transition flex items-center gap-1">
                 <Store className="w-3.5 h-3.5" /> Become Seller
               </Link>
               <Link to="/ai-assistant" className="text-amber-400 hover:text-amber-300 font-bold transition flex items-center gap-1.5">
@@ -287,7 +308,9 @@ export default function Header() {
             {/* Profile Dropdown or Login Options */}
             {isAuthenticated ? (
               <div className="flex items-center gap-3">
-                
+
+                <NotificationBell />
+
                 {/* Fast Access Dashboard Redirect Link */}
                 {!(location.pathname === '/' || location.pathname === '/landing' || location.pathname === '/welcome') && (
                   <Link
@@ -327,10 +350,25 @@ export default function Header() {
                         <Link to={dashboardLink} onClick={() => setIsProfileMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2 text-nexus-400 font-bold hover:bg-slate-900 transition">
                           <LayoutDashboard className="w-3.5 h-3.5 text-nexus-400" /> {dashboardText}
                         </Link>
-                        
+
                         <Link to="/profile" onClick={() => setIsProfileMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-900 hover:text-white transition">
                           <User className="w-3.5 h-3.5 text-indigo-400" /> My Profile
                         </Link>
+
+                        {!isSellerApproved(user) && user?.role !== Roles.ADMIN && (
+                          <Link
+                            to={user?.sellerStatus === SellerStatus.PENDING ? ROUTES.SELLER_PENDING : ROUTES.SELLER_APPLY}
+                            onClick={() => setIsProfileMenuOpen(false)}
+                            className="flex items-center gap-2.5 px-4 py-2 text-emerald-400 font-bold hover:bg-emerald-950/40 transition"
+                          >
+                            <Store className="w-3.5 h-3.5 text-emerald-400" />
+                            {user?.sellerStatus === SellerStatus.PENDING
+                              ? 'Application Pending'
+                              : user?.sellerStatus === SellerStatus.REJECTED
+                                ? 'Resubmit Application'
+                                : 'Become a Seller'}
+                          </Link>
+                        )}
 
                         <Link to="/settings" onClick={() => setIsProfileMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-900 hover:text-white transition">
                           <Lock className="w-3.5 h-3.5 text-amber-400" /> Settings

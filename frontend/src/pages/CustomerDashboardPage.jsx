@@ -17,8 +17,12 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Store,
 } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
+import { SellerStatus, ROUTES, isCustomer } from '../constants/roles';
+import { formatTaka } from '../utils/currency';
+import CustomerInsights from '../components/customer/CustomerInsights';
 
 const STATUS_STEPS = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
@@ -31,8 +35,7 @@ function getStepIndex(status) {
 }
 
 function formatMoney(amount) {
-  const n = Number(amount) || 0;
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  return formatTaka(Number(amount) || 0);
 }
 
 function formatDate(iso) {
@@ -49,13 +52,17 @@ function formatDate(iso) {
 }
 
 export default function CustomerDashboardPage() {
-  const { user } = useAuth();
+  const { user, sellerStatus } = useAuth();
 
   const [orders, setOrders] = useState([]);
   const [wishlistItems, setWishlistItems] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const showSellerCta = isCustomer(user) && sellerStatus === SellerStatus.NONE;
+  const showSellerPending = sellerStatus === SellerStatus.PENDING;
+  const showSellerRejected = sellerStatus === SellerStatus.REJECTED;
 
   const loadDashboard = async () => {
     setLoading(true);
@@ -104,12 +111,71 @@ export default function CustomerDashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
+
+      {/* Become-a-seller CTA — only for plain customers */}
+      {showSellerCta && (
+        <Link
+          to={ROUTES.SELLER_APPLY}
+          className="block glass-panel p-5 sm:p-6 rounded-3xl border border-emerald-800/60 bg-gradient-to-r from-emerald-950/60 to-indigo-950/60 hover:from-emerald-900/60 hover:to-indigo-900/60 transition"
+        >
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-700/30 border border-emerald-700/50 flex items-center justify-center shrink-0">
+                <Store className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-base sm:text-lg font-extrabold text-white">Open your merchant store on GroupMart</h2>
+                <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
+                  List products, manage inventory, and start receiving orders. Submit a quick seller
+                  application — admin approval is required to keep the marketplace trusted.
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition shrink-0">
+              Apply now <ArrowRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+        </Link>
+      )}
+
+      {showSellerPending && (
+        <Link
+          to={ROUTES.SELLER_PENDING}
+          className="block glass-panel p-5 rounded-3xl border border-amber-800/70 bg-amber-950/40 hover:bg-amber-950/60 transition"
+        >
+          <div className="flex items-center gap-3">
+            <Clock className="w-5 h-5 text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-amber-100">Your seller application is under review.</p>
+              <p className="text-xs text-amber-200/80">You will be granted merchant access as soon as an administrator approves your store.</p>
+            </div>
+            <span className="text-xs font-bold text-amber-200">View status →</span>
+          </div>
+        </Link>
+      )}
+
+      {showSellerRejected && (
+        <Link
+          to={ROUTES.SELLER_APPLY}
+          className="block glass-panel p-5 rounded-3xl border border-rose-800/70 bg-rose-950/40 hover:bg-rose-950/60 transition"
+        >
+          <div className="flex items-center gap-3">
+            <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-rose-100">Your seller application was rejected.</p>
+              <p className="text-xs text-rose-200/80">Update your details and resubmit for review.</p>
+            </div>
+            <span className="text-xs font-bold text-rose-200">Resubmit →</span>
+          </div>
+        </Link>
+      )}
+
       {/* Welcome Banner */}
       <div className="glass-panel p-6 sm:p-8 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 border border-slate-800 bg-gradient-to-r from-slate-900 via-nexus-950/40 to-slate-950">
         <div className="space-y-2 text-center sm:text-left">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nexus-950 border border-nexus-800 text-nexus-300 text-xs font-bold">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            {orders.length >= 5 ? 'Nexus Gold Member' : orders.length >= 1 ? 'Nexus Member' : 'New Member'}
+            {orders.length >= 5 ? 'GMart Gold Member' : orders.length >= 1 ? 'Nexus Member' : 'New Member'}
           </div>
           <h1 className="text-3xl font-black text-white">
             Welcome back, {user?.firstName || 'Customer'}!
@@ -176,6 +242,13 @@ export default function CustomerDashboardPage() {
           <p className="text-2xl font-black text-rose-400">{wishlistItems.length}</p>
         </div>
       </div>
+
+      {/* Purchasing history, charted. Built from the orders and wishlist already loaded above. */}
+      <CustomerInsights
+        orders={orders}
+        wishlistItems={wishlistItems}
+        recommendations={recommendations}
+      />
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

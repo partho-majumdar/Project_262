@@ -1,13 +1,11 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-// Layouts
 import PublicLayout from './layouts/PublicLayout';
 import CustomerLayout from './layouts/CustomerLayout';
 import SellerLayout from './layouts/SellerLayout';
 import AdminLayout from './layouts/AdminLayout';
 
-// Customer Pages
 import LandingPage from './pages/LandingPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -28,189 +26,296 @@ import PurchaseHistoryPage from './pages/PurchaseHistoryPage';
 import RewardsPage from './pages/RewardsPage';
 import SettingsPage from './pages/SettingsPage';
 import CustomerDashboardPage from './pages/CustomerDashboardPage';
+import CustomerSupportPage from './pages/CustomerSupportPage';
 import AiAssistantPage from './pages/AiAssistantPage';
 import StorePage from './pages/StorePage';
+import GroupDealsPage from './pages/GroupDealsPage';
+import GroupDealDetailPage from './pages/GroupDealDetailPage';
+import GroupBuyGroupPage from './pages/GroupBuyGroupPage';
+import GroupBuyJoinPage from './pages/GroupBuyJoinPage';
+import MyGroupsPage from './pages/MyGroupsPage';
+import WholesaleDealsPage from './pages/WholesaleDealsPage';
+import WholesalePoolDetailPage from './pages/WholesalePoolDetailPage';
+import MyWholesalePage from './pages/MyWholesalePage';
+import ReverseDealsPage from './pages/ReverseDealsPage';
+import ReverseOfferDetailPage from './pages/ReverseOfferDetailPage';
+import MyReverseDemandPage from './pages/MyReverseDemandPage';
+import GroupReverseDealsPage from './pages/GroupReverseDealsPage';
+import GroupReverseDetailPage from './pages/GroupReverseDetailPage';
+import GroupReverseCreatePage from './pages/GroupReverseCreatePage';
+import MyGroupReversePage from './pages/MyGroupReversePage';
+import GroupBuyingAuctionsPage from './pages/GroupBuyingAuctionsPage';
+import GroupBuyingAuctionDetailPage from './pages/GroupBuyingAuctionDetailPage';
+import MyAuctionBidsPage from './pages/MyAuctionBidsPage';
+import AuctionMarketplacePage from './pages/AuctionMarketplacePage';
+import ProxyAuctionDetailPage from './pages/ProxyAuctionDetailPage';
+import MyBidsPage from './pages/MyBidsPage';
 import NotFoundPage from './pages/NotFoundPage';
 
-// Seller Pages
 import SellerRegistrationPage from './pages/SellerRegistrationPage';
+import SellerApplicationPage from './pages/SellerApplicationPage';
+import PendingApprovalPage from './pages/PendingApprovalPage';
 import SellerDashboardPage from './pages/SellerDashboardPage';
+import SellerSupportPage from './pages/SellerSupportPage';
 import InventoryManagementPage from './pages/InventoryManagementPage';
 
-// Admin Pages
 import AdminDashboardPage from './pages/AdminDashboardPage';
 
-// Protection Guard
-import ProtectedRoute from './components/common/ProtectedRoute';
+import ProtectedRoute, { CustomerOnlyRoute } from './components/common/ProtectedRoute';
 import RootRedirector from './components/common/RootRedirector';
+
+import { Roles } from './constants/roles';
 
 export default function App() {
   return (
     <Routes>
-      {/* ROOT LANDING ROUTE REDIRECTOR */}
       <Route path="/" element={<RootRedirector />} />
       <Route path="/landing" element={<Navigate to="/" replace />} />
       <Route path="/welcome" element={<Navigate to="/" replace />} />
 
-      {/* PORTAL 0: PUBLIC PORTAL LAYOUT */}
       <Route element={<PublicLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/seller/register" element={<SellerRegistrationPage />} />
+        <Route path="/seller/apply" element={<SellerApplicationPage />} />
+        <Route
+          path="/seller/pending-approval"
+          element={
+            <ProtectedRoute>
+              <PendingApprovalPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
 
-      {/* PORTAL 1: CUSTOMER PORTAL LAYOUT */}
       <Route element={<CustomerLayout />}>
-        {/* Public Catalog Routes */}
         <Route path="/categories" element={<CategoriesPage />} />
         <Route path="/categories/:slug" element={<CategoryDetailPage />} />
         <Route path="/products" element={<ProductsPage />} />
         <Route path="/products/:slug" element={<ProductDetailPage />} />
         <Route path="/stores/:slug" element={<StorePage />} />
 
-        {/* Authenticated Customer Protected Routes */}
-        <Route 
-          path="/customer/dashboard" 
+        <Route path="/group-deals" element={<GroupDealsPage />} />
+        <Route path="/group-deals/:campaignId" element={<GroupDealDetailPage />} />
+        <Route path="/group-buy/groups/:groupId" element={<GroupBuyGroupPage />} />
+        <Route path="/group-buy/join/:inviteCode" element={<GroupBuyJoinPage />} />
+        <Route
+          path="/group-buy/my-groups"
           element={
-            <ProtectedRoute>
-              <CustomerDashboardPage />
-            </ProtectedRoute>
-          } 
+            <CustomerOnlyRoute>
+              <MyGroupsPage />
+            </CustomerOnlyRoute>
+          }
         />
-        <Route 
-          path="/dashboard" 
+
+        <Route path="/wholesale" element={<WholesaleDealsPage />} />
+        <Route path="/wholesale/pools/:poolId" element={<WholesalePoolDetailPage />} />
+        <Route
+          path="/wholesale/my-reservations"
           element={
-            <ProtectedRoute>
-              <CustomerDashboardPage />
-            </ProtectedRoute>
-          } 
+            <CustomerOnlyRoute>
+              <MyWholesalePage />
+            </CustomerOnlyRoute>
+          }
         />
-        <Route 
-          path="/home" 
+
+        <Route path="/reverse-group-buying" element={<ReverseDealsPage />} />
+        <Route path="/reverse-group-buying/offers/:offerId" element={<ReverseOfferDetailPage />} />
+        <Route
+          path="/reverse-group-buying/my-demand"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
+              <MyReverseDemandPage />
+            </CustomerOnlyRoute>
+          }
+        />
+
+        {/* Customer-created group buying, where customers pool a quantity first and sellers
+            bid for the whole block. The mirror image of the seller-initiated route above. */}
+        <Route path="/group-reverse" element={<GroupReverseDealsPage />} />
+        <Route path="/group-reverse/:demandId" element={<GroupReverseDetailPage />} />
+        <Route
+          path="/group-reverse/new"
+          element={
+            <CustomerOnlyRoute>
+              <GroupReverseCreatePage />
+            </CustomerOnlyRoute>
+          }
+        />
+        <Route
+          path="/group-reverse/my/demands"
+          element={
+            <CustomerOnlyRoute>
+              <MyGroupReversePage />
+            </CustomerOnlyRoute>
+          }
+        />
+
+        {/* Sealed-bid proxy auctions. A separate mechanism from the collective
+            /group-buying-auctions above, which clears many customers at a shared quantity. */}
+        <Route path="/auctions" element={<AuctionMarketplacePage />} />
+        <Route path="/auctions/:auctionId" element={<ProxyAuctionDetailPage />} />
+        <Route
+          path="/auctions/my-bids"
+          element={
+            <CustomerOnlyRoute>
+              <MyBidsPage />
+            </CustomerOnlyRoute>
+          }
+        />
+
+        <Route path="/group-buying-auctions" element={<GroupBuyingAuctionsPage />} />
+        <Route path="/group-buying-auctions/:auctionId" element={<GroupBuyingAuctionDetailPage />} />
+        <Route
+          path="/group-buying-auctions/my-bids"
+          element={
+            <CustomerOnlyRoute>
+              <MyAuctionBidsPage />
+            </CustomerOnlyRoute>
+          }
+        />
+
+        <Route
+          path="/customer/dashboard"
+          element={
+            <CustomerOnlyRoute>
+              <CustomerDashboardPage />
+            </CustomerOnlyRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <CustomerOnlyRoute>
+              <CustomerDashboardPage />
+            </CustomerOnlyRoute>
+          }
+        />
+        <Route
+          path="/support"
+          element={
+            <CustomerOnlyRoute>
+              <CustomerSupportPage />
+            </CustomerOnlyRoute>
+          }
+        />
+        <Route
+          path="/home"
+          element={
+            <CustomerOnlyRoute>
               <HomePage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/profile" 
+        <Route
+          path="/profile"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <ProfilePage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/settings" 
+        <Route
+          path="/settings"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <SettingsPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/ai-assistant" 
+        <Route
+          path="/ai-assistant"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <AiAssistantPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/cart" 
+        <Route
+          path="/cart"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <CartPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-        
-        <Route 
-          path="/wishlist" 
+        <Route
+          path="/wishlist"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <WishlistPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/coupons" 
+        <Route
+          path="/coupons"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <RewardsPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/checkout" 
+        <Route
+          path="/checkout"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <CheckoutPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/orders" 
+        <Route
+          path="/orders"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <OrdersHistoryPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/orders/tracking" 
+        <Route
+          path="/orders/tracking"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <OrderTrackingPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/orders/history" 
+        <Route
+          path="/orders/history"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <PurchaseHistoryPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
-
-        <Route 
-          path="/orders/confirmation/:orderNumber" 
+        <Route
+          path="/orders/confirmation/:orderNumber"
           element={
-            <ProtectedRoute>
+            <CustomerOnlyRoute>
               <OrderConfirmationPage />
-            </ProtectedRoute>
-          } 
+            </CustomerOnlyRoute>
+          }
         />
       </Route>
 
-      {/* PORTAL 2: SELLER CENTRAL PORTAL LAYOUT */}
-      <Route 
+      <Route
         element={
-          <ProtectedRoute allowedRoles={['ROLE_SELLER', 'ROLE_ADMIN']}>
+          <ProtectedRoute
+            allowedRoles={[Roles.SELLER, Roles.ADMIN]}
+            requireApprovedSeller
+          >
             <SellerLayout />
           </ProtectedRoute>
         }
       >
         <Route path="/seller/dashboard" element={<SellerDashboardPage />} />
         <Route path="/seller/inventory" element={<InventoryManagementPage />} />
+        <Route path="/seller/support" element={<SellerSupportPage />} />
       </Route>
 
-      {/* PORTAL 3: EXECUTIVE ADMIN COMMAND PORTAL LAYOUT */}
-      <Route 
+      <Route
         element={
-          <ProtectedRoute allowedRoles={['ROLE_ADMIN']}>
+          <ProtectedRoute allowedRoles={[Roles.ADMIN]}>
             <AdminLayout />
           </ProtectedRoute>
         }
@@ -219,7 +324,6 @@ export default function App() {
         <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
       </Route>
 
-      {/* 404 Catch All */}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

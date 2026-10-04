@@ -19,6 +19,7 @@ public class CouponDto {
 
     private UUID id;
     private String code;
+    private String description;
     private DiscountType discountType;
     private BigDecimal discountValue;
     private BigDecimal minOrderAmount;

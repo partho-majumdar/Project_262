@@ -10,6 +10,7 @@ import com.groupmart.common.exception.ResourceNotFoundException;
 import com.groupmart.dto.review.CreateReviewRequest;
 import com.groupmart.dto.review.ProductReviewSummaryDto;
 import com.groupmart.dto.review.ReviewDto;
+import com.groupmart.dto.review.ReviewEligibilityDto;
 import com.groupmart.dto.review.SellerReplyRequest;
 import com.groupmart.entity.*;
 import com.groupmart.repository.*;
@@ -17,8 +18,10 @@ import com.groupmart.service.ReviewService;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -29,7 +32,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewRepository reviewRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
-    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final SellerStoreRepository sellerStoreRepository;
 
     @Override
@@ -63,6 +66,45 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public ReviewEligibilityDto getEligibility(String userEmail, UUID productId) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product", "id", productId));
+
+        Order delivered = firstDeliveredOrder(user.getId(), productId);
+        Review existing = reviewRepository.findByUserIdAndProductId(user.getId(), productId).orElse(null);
+
+        if (existing != null) {
+            return ReviewEligibilityDto.builder()
+                    .productId(productId)
+                    .eligible(false)
+                    .reason("You have already reviewed this product.")
+                    .existingReviewId(existing.getId())
+                    .orderNumber(delivered != null ? delivered.getOrderNumber() : null)
+                    .deliveredAt(delivered != null ? delivered.getDeliveredAt() : null)
+                    .build();
+        }
+
+        if (delivered == null) {
+            return ReviewEligibilityDto.builder()
+                    .productId(productId)
+                    .eligible(false)
+                    .reason("Only customers whose order for this product has been delivered can review it.")
+                    .build();
+        }
+
+        return ReviewEligibilityDto.builder()
+                .productId(productId)
+                .eligible(true)
+                .orderNumber(delivered.getOrderNumber())
+                .deliveredAt(delivered.getDeliveredAt())
+                .build();
+    }
+
+    @Override
     @Transactional
     public ReviewDto createReview(String userEmail, UUID productId, CreateReviewRequest request) {
         User user = userRepository.findByEmail(userEmail)
@@ -75,12 +117,14 @@ public class ReviewServiceImpl implements ReviewService {
             throw new ApiException("You have already submitted a review for this product", HttpStatus.CONFLICT);
         }
 
-        boolean isVerifiedBuyer = orderRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
-                .filter(o -> o.getStatus() == OrderStatus.DELIVERED
-                        || o.getStatus() == OrderStatus.PROCESSING
-                        || o.getStatus() == OrderStatus.SHIPPED)
-                .flatMap(o -> o.getItems().stream())
-                .anyMatch(i -> i.getProduct().getId().equals(productId));
+        // A review is earned by delivery, so an order for the product has to have actually arrived.
+        // PROCESSING and SHIPPED do not qualify, and neither does never having bought it.
+        Order delivered = firstDeliveredOrder(user.getId(), productId);
+        if (delivered == null) {
+            throw new ApiException(
+                    "You can only review a product after your order for it has been delivered",
+                    HttpStatus.FORBIDDEN);
+        }
 
         Review review = Review.builder()
                 .user(user)
@@ -88,7 +132,7 @@ public class ReviewServiceImpl implements ReviewService {
                 .rating(request.getRating())
                 .title(request.getTitle().trim())
                 .comment(request.getComment())
-                .verifiedPurchase(isVerifiedBuyer)
+                .verifiedPurchase(true)
                 .helpfulVotes(0)
                 .build();
 
@@ -96,6 +140,51 @@ public class ReviewServiceImpl implements ReviewService {
         recalculateProductRating(product);
 
         return mapToDto(savedReview);
+    }
+
+    /** Newest DELIVERED order this customer holds for the product, or null. */
+    private Order firstDeliveredOrder(UUID userId, UUID productId) {
+        List<Order> delivered = orderItemRepository.findDeliveredOrdersByUserAndProduct(userId, productId);
+        return delivered.isEmpty() ? null : delivered.get(0);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReviewEligibilityDto> getEligibilityForProducts(String userEmail, List<UUID> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return List.of();
+        }
+
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", userEmail));
+
+        // One query each, then the per-product answer is derived in memory.
+        Set<UUID> delivered = new HashSet<>(orderItemRepository.findDeliveredProductIdsByUser(user.getId()));
+        Set<UUID> alreadyReviewed = reviewRepository.findByUserIdAndProductIdIn(user.getId(), productIds)
+                .stream()
+                .map(r -> r.getProduct().getId())
+                .collect(Collectors.toSet());
+
+        return productIds.stream().distinct().map(productId -> {
+            if (alreadyReviewed.contains(productId)) {
+                return ReviewEligibilityDto.builder()
+                        .productId(productId)
+                        .eligible(false)
+                        .reason("You have already reviewed this product.")
+                        .build();
+            }
+            if (!delivered.contains(productId)) {
+                return ReviewEligibilityDto.builder()
+                        .productId(productId)
+                        .eligible(false)
+                        .reason("Only customers whose order for this product has been delivered can review it.")
+                        .build();
+            }
+            return ReviewEligibilityDto.builder()
+                    .productId(productId)
+                    .eligible(true)
+                    .build();
+        }).collect(Collectors.toList());
     }
 
     @Override
@@ -163,6 +252,15 @@ public class ReviewServiceImpl implements ReviewService {
 
         Review updated = reviewRepository.save(review);
         return mapToDto(updated);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReviewDto> getRecentReviews(int limit) {
+        return reviewRepository.findTop8ByOrderByCreatedAtDesc().stream()
+                .map(this::mapToDto)
+                .limit(limit)
+                .collect(Collectors.toList());
     }
 
     private void recalculateProductRating(Product product) {

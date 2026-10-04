@@ -20,6 +20,14 @@
     <properties>
         <java.version>17</java.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <!-- Without this, javac reads .java files using the platform default codepage
+             (e.g. Windows-1252 on this build machine), corrupting non-ASCII literals
+             such as the ৳ (Taka) sign used throughout the AI assistant's reply text. -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <!-- Spring Boot 3.3.2 pins Lombok 1.18.32, which predates JDK 23 support (added in 1.18.34)
+             and silently fails to generate getters/setters/builders when compiled on JDK 23. -->
+        <lombok.version>1.18.34</lombok.version>
     </properties>
     
     <dependencies>
@@ -123,6 +131,22 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- This JDK's javac does not auto-discover annotation processors from the plain
+                         classpath, so Lombok never ran and every generated getter/setter/builder was
+                         missing. Declaring it explicitly forces javac to load it via -processorpath. -->
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
         </plugins>
